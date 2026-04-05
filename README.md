@@ -36,7 +36,7 @@ FloppyOps Lite gives you all of this in a beautiful web interface — directly o
 - **Template Assignments** — Shows which firewall template is assigned to each VM/CT
 - **Clone** with Full/Linked Clone option
 - Adjust hardware: CPU, RAM, Swap, Onboot
-- Network: Keep, Customize (IP, Gateway, Bridge, DNS), or Disconnect
+- Network: Keep, Customize (IPv4/IPv6 Address, Gateway, Bridge, DNS), or Disconnect
 - Auto-start after clone
 
 ### Firewall Templates *(new in v1.1.0)*
@@ -70,6 +70,7 @@ FloppyOps Lite gives you all of this in a beautiful web interface — directly o
   - Setup script asks if you use Cloudflare and configures everything automatically
 - **Setup Guide** with live system checks:
   - IPv4/IPv6 Forwarding (with fix button)
+  - IPv6 NDP Proxy check (with fix button — needed for IPv6 between bridges)
   - NAT/Masquerading (with activate button)
   - Internal bridge detection
   - Nginx + Certbot status
@@ -78,7 +79,7 @@ FloppyOps Lite gives you all of this in a beautiful web interface — directly o
 - **Pools & Datasets** — utilization, health, fragmentation
 - **Snapshots** — grouped by CT/VM with name, sortable, filterable
   - **Rollback** — restore to previous state
-  - **Clone** — create new CT/VM from snapshot (full hardware: CPU, RAM, Swap, Onboot + network customization)
+  - **Clone** — create new CT/VM from snapshot (full hardware: CPU, RAM, Swap, Onboot + IPv4/IPv6 network customization)
   - Network fields always visible (grayed out when not editable) — no layout shift
   - Only 5 most recent shown, rest collapsible
 - **Auto-Snapshots** — zfs-auto-snapshot installation + retention config

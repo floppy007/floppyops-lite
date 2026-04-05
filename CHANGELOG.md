@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.3 (2026-04-05)
+
+### Added
+- **IPv6 Network Config**: IPv6 address + gateway fields in ZFS Snap Clone dialog
+- **IPv6 NDP Proxy Check**: Security tab now checks if NDP proxy is enabled when needed, with one-click fix (permanent via sysctl.conf)
+- **IPv6 in VM list**: Clone modal shows IPv6 addresses in network info
+
+### Improved
+- Security checks now cover IPv4 forwarding, IPv6 forwarding, and NDP proxy status
+- Network section in clone dialog split into clear IPv4/IPv6 sections
+
+---
+
 ## v1.1.2 (2026-04-04)
 
 ### Fixed
