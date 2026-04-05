@@ -67,7 +67,8 @@ async function pveOpenClone(vmid, type, name) {
             const net = cfg['net' + i];
             const bridge = (net.match(/bridge=([^,]+)/) || [])[1] || '?';
             const ip = (net.match(/ip=([^,]+)/) || [])[1] || 'DHCP';
-            netInfo += '<div style="font-size:.62rem;color:var(--text3);font-family:var(--mono)">net' + i + ': ' + bridge + ' &middot; ' + ip + '</div>';
+            const ip6 = (net.match(/ip6=([^,]+)/) || [])[1] || '';
+            netInfo += '<div style="font-size:.62rem;color:var(--text3);font-family:var(--mono)">net' + i + ': ' + bridge + ' &middot; ' + ip + (ip6 ? ' &middot; <span style="color:var(--blue)">' + ip6 + '</span>' : '') + '</div>';
         }
     }
 

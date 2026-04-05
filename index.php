@@ -1178,6 +1178,8 @@ function handleVmsAPI(string $action): bool {
         $onboot = ($_POST['onboot'] ?? '');
         $newIp = trim($_POST['new_ip'] ?? '');
         $newGw = trim($_POST['new_gw'] ?? '');
+        $newIp6 = trim($_POST['new_ip6'] ?? '');
+        $newGw6 = trim($_POST['new_gw6'] ?? '');
         $newBridge = trim($_POST['new_bridge'] ?? '');
         $newDns = trim($_POST['new_dns'] ?? '');
 
@@ -1269,7 +1271,7 @@ function handleVmsAPI(string $action): bool {
             } else {
                 $conf = preg_replace('/(^net0:.*)$/m', '$1,link_down=1', $conf);
             }
-        } elseif ($newIp || $newGw || $newBridge || $newDns) {
+        } elseif ($newIp || $newGw || $newIp6 || $newGw6 || $newBridge || $newDns) {
             // Custom network settings
             if ($isLxc) {
                 if ($newIp) $conf = preg_replace('/ip=[0-9.\/]+/', 'ip=' . $newIp, $conf);
@@ -1278,6 +1280,21 @@ function handleVmsAPI(string $action): bool {
                         $conf = preg_replace('/gw=[0-9.]+/', 'gw=' . $newGw, $conf);
                     } else {
                         $conf = preg_replace('/(^net0:.*)$/m', '$1,gw=' . $newGw, $conf);
+                    }
+                }
+                // IPv6
+                if ($newIp6) {
+                    if (preg_match('/ip6=[^,]+/', $conf)) {
+                        $conf = preg_replace('/ip6=[^,]+/', 'ip6=' . $newIp6, $conf);
+                    } else {
+                        $conf = preg_replace('/(^net0:.*)$/m', '$1,ip6=' . $newIp6, $conf);
+                    }
+                }
+                if ($newGw6) {
+                    if (preg_match('/gw6=[^,\s]+/', $conf)) {
+                        $conf = preg_replace('/gw6=[^,\s]+/', 'gw6=' . $newGw6, $conf);
+                    } else {
+                        $conf = preg_replace('/(^net0:.*)$/m', '$1,gw6=' . $newGw6, $conf);
                     }
                 }
                 if ($newDns) {
@@ -6077,12 +6094,14 @@ async function zfsSnapCloneVm(snap) {
     }
 
     // Parse network from source config
-    let srcIp = '', srcGw = '', srcBridge = '', srcDns = cfg.nameserver || '';
+    let srcIp = '', srcGw = '', srcBridge = '', srcDns = cfg.nameserver || '', srcIp6 = '', srcGw6 = '';
     const net0 = cfg.net0 || '';
     if (net0) {
         srcIp = (net0.match(/ip=([^,]+)/) || [])[1] || '';
         srcGw = (net0.match(/gw=([^,]+)/) || [])[1] || '';
         srcBridge = (net0.match(/bridge=([^,]+)/) || [])[1] || '';
+        srcIp6 = (net0.match(/ip6=([^,]+)/) || [])[1] || '';
+        srcGw6 = (net0.match(/gw6=([^,]+)/) || [])[1] || '';
     }
 
     document.getElementById('zfsSnapCloneTitle').innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="margin-right:6px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' + typeLabel + ' ' + sourceVmid + ' aus Snapshot clonen';
@@ -6145,6 +6164,7 @@ async function zfsSnapCloneVm(snap) {
                 </label>
             </div>
             <div id="zscNetCustomFields" style="opacity:.35">
+                <div style="font-size:.58rem;font-weight:600;color:var(--text3);margin-bottom:4px">IPv4</div>
                 <div style="display:flex;gap:8px;margin-bottom:8px">
                     <div style="flex:2">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">IP-Adresse (CIDR)</label>
@@ -6153,6 +6173,17 @@ async function zfsSnapCloneVm(snap) {
                     <div style="flex:1">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">Gateway</label>
                         <input class="form-input" id="zscGw" value="${srcGw}" placeholder="10.10.10.1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                    </div>
+                </div>
+                <div style="font-size:.58rem;font-weight:600;color:var(--text3);margin-bottom:4px;margin-top:8px">IPv6</div>
+                <div style="display:flex;gap:8px;margin-bottom:8px">
+                    <div style="flex:2">
+                        <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">IPv6-Adresse (CIDR)</label>
+                        <input class="form-input" id="zscIp6" value="${srcIp6}" placeholder="2a01:4f9::100/64 oder dhcp" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                    </div>
+                    <div style="flex:1">
+                        <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">IPv6 Gateway</label>
+                        <input class="form-input" id="zscGw6" value="${srcGw6}" placeholder="fe80::1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
                     </div>
                 </div>
                 <div style="display:flex;gap:8px">
@@ -6219,6 +6250,8 @@ async function zfsSnapCloneSubmit() {
     if (netMode === 'custom') {
         data.new_ip = document.getElementById('zscIp')?.value?.trim() || '';
         data.new_gw = document.getElementById('zscGw')?.value?.trim() || '';
+        data.new_ip6 = document.getElementById('zscIp6')?.value?.trim() || '';
+        data.new_gw6 = document.getElementById('zscGw6')?.value?.trim() || '';
         data.new_bridge = document.getElementById('zscBridge')?.value?.trim() || '';
         data.new_dns = document.getElementById('zscDns')?.value?.trim() || '';
     }
