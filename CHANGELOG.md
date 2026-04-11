@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.4 (2026-04-11)
+
+### Improved
+- Login page font loading: Removed external Google Fonts import and switched the login UI to local system font stacks only
+- Safer Nginx system fixes: Forwarding, NDP proxy and NAT persistence now go through a shared system-change helper with backup creation, diff output, dry-run support and clearer error reporting
+
 ## v1.2.3 (2026-04-10)
 
 ### Improved

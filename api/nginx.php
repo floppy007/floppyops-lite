@@ -18,6 +18,115 @@
  * @param string $action Der API-Action-Name
  * @return bool true wenn behandelt
  */
+function nginxSystemReadFile(string $path): array {
+    $content = @file_get_contents($path);
+    if ($content !== false) {
+        return ['ok' => true, 'content' => $content];
+    }
+
+    $content = shell_exec('sudo cat ' . escapeshellarg($path) . ' 2>/dev/null');
+    if ($content !== null && $content !== '') {
+        return ['ok' => true, 'content' => $content];
+    }
+
+    return ['ok' => false, 'error' => "Konnte Datei nicht lesen: {$path}"];
+}
+
+function nginxSystemDiff(string $oldContent, string $newContent, string $label = 'change'): string {
+    $oldFile = tempnam(sys_get_temp_dir(), 'ngx_old_');
+    $newFile = tempnam(sys_get_temp_dir(), 'ngx_new_');
+    if (!$oldFile || !$newFile) return '';
+
+    file_put_contents($oldFile, $oldContent);
+    file_put_contents($newFile, $newContent);
+    $diff = shell_exec(
+        'diff -u --label ' . escapeshellarg($label . ':before') .
+        ' --label ' . escapeshellarg($label . ':after') . ' ' .
+        escapeshellarg($oldFile) . ' ' . escapeshellarg($newFile) . ' 2>/dev/null'
+    ) ?? '';
+    @unlink($oldFile);
+    @unlink($newFile);
+    return trim($diff);
+}
+
+function nginxSystemWriteFile(string $path, string $newContent, bool $dryRun = false): array {
+    $read = nginxSystemReadFile($path);
+    if (!$read['ok']) return $read;
+
+    $oldContent = $read['content'];
+    $diff = nginxSystemDiff($oldContent, $newContent, $path);
+    $changed = $oldContent !== $newContent;
+
+    if (!$changed) {
+        return ['ok' => true, 'changed' => false, 'dry_run' => $dryRun, 'backup' => null, 'diff' => $diff];
+    }
+
+    if ($dryRun) {
+        return ['ok' => true, 'changed' => true, 'dry_run' => true, 'backup' => null, 'diff' => $diff];
+    }
+
+    $tmpFile = tempnam(sys_get_temp_dir(), 'ngx_write_');
+    if (!$tmpFile) {
+        return ['ok' => false, 'error' => "Konnte Temp-Datei fuer {$path} nicht anlegen"];
+    }
+
+    file_put_contents($tmpFile, $newContent);
+    $backupPath = $path . '.bak-' . date('Ymd-His');
+    $cmd = 'sudo cp ' . escapeshellarg($path) . ' ' . escapeshellarg($backupPath) .
+        ' && sudo cp ' . escapeshellarg($tmpFile) . ' ' . escapeshellarg($path);
+    $output = shell_exec($cmd . ' 2>&1') ?? '';
+    @unlink($tmpFile);
+
+    if (!file_exists($backupPath)) {
+        return ['ok' => false, 'error' => "Backup fuer {$path} konnte nicht erstellt werden", 'details' => trim($output)];
+    }
+
+    $verify = nginxSystemReadFile($path);
+    if (!$verify['ok']) return $verify;
+    if ($verify['content'] !== $newContent) {
+        return ['ok' => false, 'error' => "Datei {$path} wurde nicht korrekt geschrieben", 'details' => trim($output), 'backup' => $backupPath, 'diff' => $diff];
+    }
+
+    return ['ok' => true, 'changed' => true, 'dry_run' => false, 'backup' => $backupPath, 'diff' => $diff, 'details' => trim($output)];
+}
+
+function nginxSystemRun(string $cmd, string $label): array {
+    $output = shell_exec($cmd . ' 2>&1');
+    return [
+        'ok' => is_string($output),
+        'label' => $label,
+        'command' => $cmd,
+        'output' => trim((string)$output),
+    ];
+}
+
+function nginxUpsertSetting(string $content, string $key, string $value): string {
+    $line = $key . '=' . $value;
+    if (preg_match('/^\s*#?\s*' . preg_quote($key, '/') . '\s*=.*$/m', $content)) {
+        return preg_replace('/^\s*#?\s*' . preg_quote($key, '/') . '\s*=.*$/m', $line, $content, 1);
+    }
+
+    $trimmed = rtrim($content);
+    return ($trimmed === '' ? '' : $trimmed . "\n") . $line . "\n";
+}
+
+function nginxEnsureNatBridgeRules(string $content, string $bridge, string $subnet, string $iface): array {
+    $postUp = "\tpost-up iptables -t nat -A POSTROUTING -s {$subnet} -o {$iface} -j MASQUERADE";
+    $postDown = "\tpost-down iptables -t nat -D POSTROUTING -s {$subnet} -o {$iface} -j MASQUERADE";
+
+    if (str_contains($content, $postUp) && str_contains($content, $postDown)) {
+        return ['ok' => true, 'content' => $content];
+    }
+
+    $pattern = "/(iface " . preg_quote($bridge, '/') . " inet static.*?)(\\n\\n|\\niface |\\nauto |\\z)/s";
+    if (!preg_match($pattern, $content)) {
+        return ['ok' => false, 'error' => "Bridge {$bridge} wurde in /etc/network/interfaces nicht gefunden"];
+    }
+
+    $updated = preg_replace($pattern, "$1\n{$postUp}\n{$postDown}$2", $content, 1);
+    return ['ok' => true, 'content' => $updated];
+}
+
 function handleNginxAPI(string $action): bool {
     // GET: System-Checks (IP-Forwarding, NAT, Bridges, Nginx, Certbot)
     if ($action === 'nginx-checks') {
@@ -78,25 +187,87 @@ function handleNginxAPI(string $action): bool {
     if ($action === 'nginx-fix' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         $fixId = $_POST['fix_id'] ?? '';
+        $dryRun = ($_POST['dry_run'] ?? '') === '1';
         $out = '';
         switch ($fixId) {
             case 'ipv4_fwd':
-                shell_exec('echo 1 > /proc/sys/net/ipv4/ip_forward');
-                // Make permanent
-                shell_exec("sudo sed -i 's/#*net.ipv4.ip_forward.*/net.ipv4.ip_forward=1/' /etc/sysctl.conf 2>/dev/null");
-                shell_exec("grep -q 'net.ipv4.ip_forward' /etc/sysctl.conf || echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf > /dev/null");
-                $out = 'IPv4 Forwarding aktiviert (permanent)';
-                break;
+                $sysctl = nginxSystemReadFile('/etc/sysctl.conf');
+                if (!$sysctl['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $sysctl['error']]);
+                    return true;
+                }
+                $newContent = nginxUpsertSetting($sysctl['content'], 'net.ipv4.ip_forward', '1');
+                $write = nginxSystemWriteFile('/etc/sysctl.conf', $newContent, $dryRun);
+                if (!$write['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $write['error'], 'details' => $write['details'] ?? '']);
+                    return true;
+                }
+                $runtime = $dryRun ? null : nginxSystemRun('sudo sysctl -w net.ipv4.ip_forward=1', 'runtime');
+                if ($runtime && !$runtime['ok']) {
+                    echo json_encode(['ok' => false, 'error' => 'IPv4 Forwarding konnte nicht aktiviert werden', 'details' => $runtime['output'], 'backup' => $write['backup'] ?? null, 'diff' => $write['diff'] ?? '']);
+                    return true;
+                }
+                echo json_encode([
+                    'ok' => true,
+                    'output' => $dryRun ? 'Dry-Run: IPv4 Forwarding wuerde aktiviert werden' : 'IPv4 Forwarding aktiviert (permanent)',
+                    'backup' => $write['backup'] ?? null,
+                    'diff' => $write['diff'] ?? '',
+                    'dry_run' => $dryRun,
+                    'runtime_output' => $runtime['output'] ?? '',
+                ]);
+                return true;
             case 'ipv6_fwd':
-                shell_exec('echo 1 > /proc/sys/net/ipv6/conf/all/forwarding');
-                shell_exec("grep -q 'net.ipv6.conf.all.forwarding' /etc/sysctl.conf || echo 'net.ipv6.conf.all.forwarding=1' | sudo tee -a /etc/sysctl.conf > /dev/null");
-                $out = 'IPv6 Forwarding aktiviert (permanent)';
-                break;
+                $sysctl = nginxSystemReadFile('/etc/sysctl.conf');
+                if (!$sysctl['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $sysctl['error']]);
+                    return true;
+                }
+                $newContent = nginxUpsertSetting($sysctl['content'], 'net.ipv6.conf.all.forwarding', '1');
+                $write = nginxSystemWriteFile('/etc/sysctl.conf', $newContent, $dryRun);
+                if (!$write['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $write['error'], 'details' => $write['details'] ?? '']);
+                    return true;
+                }
+                $runtime = $dryRun ? null : nginxSystemRun('sudo sysctl -w net.ipv6.conf.all.forwarding=1', 'runtime');
+                if ($runtime && !$runtime['ok']) {
+                    echo json_encode(['ok' => false, 'error' => 'IPv6 Forwarding konnte nicht aktiviert werden', 'details' => $runtime['output'], 'backup' => $write['backup'] ?? null, 'diff' => $write['diff'] ?? '']);
+                    return true;
+                }
+                echo json_encode([
+                    'ok' => true,
+                    'output' => $dryRun ? 'Dry-Run: IPv6 Forwarding wuerde aktiviert werden' : 'IPv6 Forwarding aktiviert (permanent)',
+                    'backup' => $write['backup'] ?? null,
+                    'diff' => $write['diff'] ?? '',
+                    'dry_run' => $dryRun,
+                    'runtime_output' => $runtime['output'] ?? '',
+                ]);
+                return true;
             case 'ndp_proxy':
-                shell_exec('sysctl -w net.ipv6.conf.all.proxy_ndp=1 > /dev/null 2>&1');
-                shell_exec("grep -q 'net.ipv6.conf.all.proxy_ndp' /etc/sysctl.conf || echo 'net.ipv6.conf.all.proxy_ndp=1' | sudo tee -a /etc/sysctl.conf > /dev/null");
-                $out = 'IPv6 NDP Proxy aktiviert (permanent)';
-                break;
+                $sysctl = nginxSystemReadFile('/etc/sysctl.conf');
+                if (!$sysctl['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $sysctl['error']]);
+                    return true;
+                }
+                $newContent = nginxUpsertSetting($sysctl['content'], 'net.ipv6.conf.all.proxy_ndp', '1');
+                $write = nginxSystemWriteFile('/etc/sysctl.conf', $newContent, $dryRun);
+                if (!$write['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $write['error'], 'details' => $write['details'] ?? '']);
+                    return true;
+                }
+                $runtime = $dryRun ? null : nginxSystemRun('sudo sysctl -w net.ipv6.conf.all.proxy_ndp=1', 'runtime');
+                if ($runtime && !$runtime['ok']) {
+                    echo json_encode(['ok' => false, 'error' => 'IPv6 NDP Proxy konnte nicht aktiviert werden', 'details' => $runtime['output'], 'backup' => $write['backup'] ?? null, 'diff' => $write['diff'] ?? '']);
+                    return true;
+                }
+                echo json_encode([
+                    'ok' => true,
+                    'output' => $dryRun ? 'Dry-Run: IPv6 NDP Proxy wuerde aktiviert werden' : 'IPv6 NDP Proxy aktiviert (permanent)',
+                    'backup' => $write['backup'] ?? null,
+                    'diff' => $write['diff'] ?? '',
+                    'dry_run' => $dryRun,
+                    'runtime_output' => $runtime['output'] ?? '',
+                ]);
+                return true;
             case 'nginx':
                 $out = shell_exec('sudo systemctl start nginx 2>&1') ?? '';
                 break;
@@ -110,23 +281,40 @@ function handleNginxAPI(string $action): bool {
                     echo json_encode(['ok' => false, 'error' => 'Subnet/Interface ungueltig']);
                     return true;
                 }
-                // Add iptables rule
-                shell_exec("sudo iptables -t nat -A POSTROUTING -s " . escapeshellarg($subnet) . " -o " . escapeshellarg($iface) . " -j MASQUERADE 2>&1");
-                // Make persistent in /etc/network/interfaces
                 $intBridge = trim($_POST['bridge'] ?? 'vmbr1');
                 $ifacesFile = '/etc/network/interfaces';
-                $content = file_get_contents($ifacesFile) ?? '';
-                if (!str_contains($content, 'MASQUERADE')) {
-                    $postUp = "\tpost-up iptables -t nat -A POSTROUTING -s {$subnet} -o {$iface} -j MASQUERADE\n\tpost-down iptables -t nat -D POSTROUTING -s {$subnet} -o {$iface} -j MASQUERADE";
-                    // Add after the bridge definition
-                    $content = preg_replace("/(iface {$intBridge} inet static.*?)(\\n\\n|\\niface |\\nauto )/s", "$1\n{$postUp}$2", $content, 1);
-                    $tmpFile = tempnam(sys_get_temp_dir(), 'ifaces_');
-                    file_put_contents($tmpFile, $content);
-                    shell_exec("sudo cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($ifacesFile) . " 2>&1");
-                    unlink($tmpFile);
+                $read = nginxSystemReadFile($ifacesFile);
+                if (!$read['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $read['error']]);
+                    return true;
                 }
-                $out = "NAT/Masquerading für {$subnet} via {$iface} aktiviert (permanent)";
-                break;
+                $prepared = nginxEnsureNatBridgeRules($read['content'], $intBridge, $subnet, $iface);
+                if (!$prepared['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $prepared['error']]);
+                    return true;
+                }
+                $write = nginxSystemWriteFile($ifacesFile, $prepared['content'], $dryRun);
+                if (!$write['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $write['error'], 'details' => $write['details'] ?? '']);
+                    return true;
+                }
+                $runtime = $dryRun ? null : nginxSystemRun(
+                    'sudo iptables -t nat -C POSTROUTING -s ' . escapeshellarg($subnet) . ' -o ' . escapeshellarg($iface) . ' -j MASQUERADE || sudo iptables -t nat -A POSTROUTING -s ' . escapeshellarg($subnet) . ' -o ' . escapeshellarg($iface) . ' -j MASQUERADE',
+                    'iptables-masquerade'
+                );
+                if ($runtime && !$runtime['ok']) {
+                    echo json_encode(['ok' => false, 'error' => 'NAT-Regel konnte nicht gesetzt werden', 'details' => $runtime['output'], 'backup' => $write['backup'] ?? null, 'diff' => $write['diff'] ?? '']);
+                    return true;
+                }
+                echo json_encode([
+                    'ok' => true,
+                    'output' => $dryRun ? "Dry-Run: NAT/Masquerading fuer {$subnet} via {$iface} wuerde aktiviert werden" : "NAT/Masquerading fuer {$subnet} via {$iface} aktiviert (permanent)",
+                    'backup' => $write['backup'] ?? null,
+                    'diff' => $write['diff'] ?? '',
+                    'dry_run' => $dryRun,
+                    'runtime_output' => $runtime['output'] ?? '',
+                ]);
+                return true;
             default:
                 echo json_encode(['ok' => false, 'error' => 'Unbekannter Fix']);
                 return true;

@@ -11,7 +11,7 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.2.3');
+define('APP_VERSION', '1.2.4');
 require_once __DIR__ . '/config.php';
 session_start();
 require_once __DIR__ . '/lang.php';
@@ -106,12 +106,11 @@ function showLoginPage(string $error = ''): void {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$appName} — Login</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;600;700;800;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#050810;--accent:#ff5900;--surface:rgba(17,24,39,.55);--border:rgba(255,255,255,.05);--text:#e8eaed;--text2:#9aa0a6;--text3:#5f6368}
 html,body{height:100%}
 body{
-    font-family:'Outfit',sans-serif;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;
     background:var(--bg);
     color:var(--text);
     display:flex;
@@ -193,7 +192,7 @@ body::after{
     margin-bottom:4px;
 }
 .login-sub{
-    font-size:.78rem;color:var(--text3);font-family:'JetBrains Mono',monospace;
+    font-size:.78rem;color:var(--text3);font-family:"SFMono-Regular","JetBrains Mono","Cascadia Code","Fira Code","Source Code Pro",Consolas,"Liberation Mono",Menlo,monospace;
 }
 
 .login-field{margin-bottom:18px;position:relative}
@@ -208,7 +207,7 @@ body::after{
     border:1px solid rgba(255,255,255,.06);
     border-radius:10px;
     color:var(--text);
-    font-family:'JetBrains Mono',monospace;
+    font-family:"SFMono-Regular","JetBrains Mono","Cascadia Code","Fira Code","Source Code Pro",Consolas,"Liberation Mono",Menlo,monospace;
     font-size:.88rem;
     outline:none;
     transition:border-color .25s,box-shadow .25s;
@@ -225,7 +224,7 @@ select.login-input option{background:#0c0f15;color:var(--text);padding:8px}
     width:100%;padding:13px;margin-top:8px;
     background:linear-gradient(135deg,var(--accent),#e04d00);
     color:#fff;border:none;border-radius:10px;
-    font-family:'Outfit',sans-serif;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;
     font-size:.9rem;font-weight:700;
     cursor:pointer;
     position:relative;overflow:hidden;
