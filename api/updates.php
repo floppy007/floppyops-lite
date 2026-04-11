@@ -26,30 +26,6 @@ function runLiteUpdateCommand(string $cmd): array {
     ];
 }
 
-function downloadLiteReleaseToTemp(): array {
-    $tmpBase = sys_get_temp_dir() . '/floppyops-lite-update-' . bin2hex(random_bytes(6));
-    if (!@mkdir($tmpBase, 0700, true) && !is_dir($tmpBase)) {
-        return ['ok' => false, 'error' => 'Temp-Verzeichnis konnte nicht angelegt werden'];
-    }
-
-    $archive = $tmpBase . '/release.tar.gz';
-    $cmd = 'curl -L --fail -A ' . escapeshellarg('FloppyOps-Lite') .
-        ' -o ' . escapeshellarg($archive) .
-        ' https://codeload.github.com/floppy007/floppyops-lite/tar.gz/refs/heads/main' .
-        ' && tar -xzf ' . escapeshellarg($archive) . ' -C ' . escapeshellarg($tmpBase);
-    $res = runLiteUpdateCommand($cmd);
-    if (!$res['ok']) {
-        return ['ok' => false, 'error' => 'Download des Release-Archivs fehlgeschlagen', 'output' => $res['output']];
-    }
-
-    $entries = glob($tmpBase . '/floppyops-lite-*', GLOB_ONLYDIR) ?: [];
-    if (empty($entries)) {
-        return ['ok' => false, 'error' => 'Entpacktes Release-Verzeichnis nicht gefunden', 'output' => $res['output']];
-    }
-
-    return ['ok' => true, 'dir' => $entries[0], 'temp_base' => $tmpBase, 'output' => $res['output']];
-}
-
 function handleUpdatesAPI(string $action): bool {
     // GET: Versionsvergleich lokal vs. GitHub
     if ($action === 'update-check') {
@@ -82,30 +58,7 @@ function handleUpdatesAPI(string $action): bool {
     if ($action === 'update-pull' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         $appDir = dirname(__DIR__);
-        $isGit = is_dir($appDir . '/.git');
-        $cleanupDir = null;
-
-        if ($isGit) {
-            $res = runLiteUpdateCommand('bash ' . escapeshellarg($appDir . '/update.sh') . ' --dir ' . escapeshellarg($appDir));
-        } else {
-            $download = downloadLiteReleaseToTemp();
-            if (!$download['ok']) {
-                echo json_encode(['ok' => false, 'error' => $download['error'], 'output' => $download['output'] ?? '']);
-                return true;
-            }
-            $cleanupDir = $download['temp_base'];
-            $res = runLiteUpdateCommand(
-                'bash ' . escapeshellarg($appDir . '/update.sh') .
-                ' --dir ' . escapeshellarg($appDir) .
-                ' --from ' . escapeshellarg($download['dir'])
-            );
-        }
-
-        if ($cleanupDir && is_dir($cleanupDir)) {
-            shell_exec('rm -rf ' . escapeshellarg($cleanupDir) . ' 2>/dev/null');
-        }
-
-        shell_exec('sudo systemctl reload php*-fpm 2>&1 || sudo systemctl restart php*-fpm 2>&1');
+        $res = runLiteUpdateCommand('bash ' . escapeshellarg($appDir . '/update.sh') . ' --dir ' . escapeshellarg($appDir));
         echo json_encode(['ok' => $res['ok'], 'output' => $res['output']]);
         return true;
     }
@@ -326,33 +279,8 @@ function handleUpdatesAPI(string $action): bool {
         @unlink('/etc/cron.daily/floppyops-lite-app-update'); // remove old format
         if ($enabled) {
             $dayField = $day === 0 ? '*' : (string)$day;
-            $installDir = __DIR__ . '/..';
-            $isGit = is_dir($installDir . '/.git') || is_dir(dirname($installDir) . '/.git');
-            if ($isGit) {
-                $gitDir = is_dir($installDir . '/.git') ? $installDir : dirname($installDir);
-                $cmd = "cd {$gitDir} && git pull origin main -q 2>/dev/null";
-                if ($gitDir !== $installDir) {
-                    $cmd .= " && cp {$gitDir}/index.php {$gitDir}/lang.php {$installDir}/";
-                    $cmd .= " && cp -r {$gitDir}/api {$gitDir}/js {$installDir}/";
-                }
-            } else {
-                $appDir = escapeshellarg(dirname(__DIR__));
-                $base = 'https://raw.githubusercontent.com/floppy007/floppyops-lite/main';
-                $cmd = "mkdir -p {$appDir}/api {$appDir}/js";
-                // Hauptdateien
-                foreach (['index.php', 'lang.php'] as $f) {
-                    $cmd .= " && curl -sf {$base}/{$f} -o {$appDir}/{$f}";
-                }
-                // API-Module
-                foreach (['dashboard','fail2ban','firewall','nginx','security','updates','vms','wireguard','zfs'] as $m) {
-                    $cmd .= " && curl -sf {$base}/api/{$m}.php -o {$appDir}/api/{$m}.php";
-                }
-                // JS-Module
-                foreach (['core','dashboard','fail2ban','firewall','nginx','security','updates','vms','wireguard','zfs'] as $m) {
-                    $cmd .= " && curl -sf {$base}/js/{$m}.js -o {$appDir}/js/{$m}.js";
-                }
-            }
-            $cmd .= " && systemctl reload php*-fpm 2>/dev/null";
+            $appDir = escapeshellarg(dirname(__DIR__));
+            $cmd = "bash {$appDir}/update.sh --dir {$appDir}";
             $script = "# FloppyOps Lite App Auto-Update\n0 {$hour} * * {$dayField} root {$cmd} > /var/log/floppyops-lite-app-update.log 2>&1\n";
             file_put_contents($cronFile, $script);
             chmod($cronFile, 0644);

@@ -24,6 +24,48 @@ info() { echo -e "  ${CYAN}ℹ${NC}  $1"; }
 cleanup() { [[ -n "${WORK_DIR:-}" && -d "${WORK_DIR:-}" ]] && rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
+download_release_to_temp() {
+    WORK_DIR="$(mktemp -d /tmp/floppyops-lite-update-XXXXXX)"
+    local archive="$WORK_DIR/release.tar.gz"
+
+    info "Kein Git-Repository erkannt, lade Release-Archiv von GitHub..."
+    curl -L --fail -A "FloppyOps-Lite" \
+        -o "$archive" \
+        "https://codeload.github.com/floppy007/floppyops-lite/tar.gz/refs/heads/main"
+
+    tar -xzf "$archive" -C "$WORK_DIR"
+
+    local extracted_dir
+    extracted_dir="$(find "$WORK_DIR" -maxdepth 1 -mindepth 1 -type d -name 'floppyops-lite-*' | head -n 1)"
+    [[ -n "$extracted_dir" ]] || { fail "Entpacktes Release-Verzeichnis nicht gefunden"; exit 1; }
+
+    SOURCE_DIR="$extracted_dir"
+}
+
+reload_php_fpm() {
+    local units=()
+    while IFS= read -r unit; do
+        [[ -n "$unit" ]] && units+=("$unit")
+    done < <(systemctl list-units --type=service --all 'php*-fpm.service' --no-legend 2>/dev/null | awk '{print $1}')
+
+    if [[ ${#units[@]} -eq 0 ]]; then
+        warn "Keine php-fpm systemd Units gefunden, ueberspringe Reload"
+        return 0
+    fi
+
+    local unit
+    for unit in "${units[@]}"; do
+        if systemctl reload "$unit" 2>/dev/null; then
+            ok "PHP-FPM neu geladen: $unit"
+            continue
+        fi
+
+        warn "Reload fehlgeschlagen, versuche Restart: $unit"
+        systemctl restart "$unit"
+        ok "PHP-FPM neu gestartet: $unit"
+    done
+}
+
 require_file() {
     local file="$1"
     [[ -f "$file" ]] || { fail "Pflichtdatei fehlt: $file"; exit 1; }
@@ -138,9 +180,7 @@ elif [[ -d "$INSTALL_DIR/.git" ]]; then
     git archive --format=tar HEAD | tar -xf - -C "$WORK_DIR"
     SOURCE_DIR="$WORK_DIR"
 else
-    fail "Kein Git-Repo und kein --from angegeben"
-    echo "  Nutze: bash update.sh --from /pfad/zu/floppyops-lite"
-    exit 1
+    download_release_to_temp
 fi
 
 info "Validiere Release-Dateisatz..."
@@ -152,6 +192,7 @@ sync_release "$SOURCE_DIR"
 ok "Dateien vollstaendig synchronisiert"
 
 info "config.php bleibt unveraendert"
+reload_php_fpm
 
 # ── Ergebnis ─────────────────────────────────────────────
 NEW_VERSION=$(grep -oP "define\('APP_VERSION',\s*'\\K[^']+" "$INSTALL_DIR/index.php" 2>/dev/null || echo "unbekannt")
