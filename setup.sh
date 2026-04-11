@@ -388,6 +388,30 @@ else
     die "js/ Verzeichnis nicht gefunden in $SCRIPT_DIR"
 fi
 
+# Public Assets
+if [[ -d "$SCRIPT_DIR/public" ]] && [[ -f "$SCRIPT_DIR/public/style.css" ]]; then
+    mkdir -p "$INSTALL_DIR/public"
+    cp "$SCRIPT_DIR/public/style.css" "$INSTALL_DIR/public/style.css"
+    ok "public/style.css $(L copied)"
+else
+    die "public/style.css $(L not_found_in) $SCRIPT_DIR/public"
+fi
+
+# Setup-/Update-Skripte
+if [[ -f "$SCRIPT_DIR/setup.sh" ]]; then
+    cp "$SCRIPT_DIR/setup.sh" "$INSTALL_DIR/setup.sh"
+    ok "setup.sh $(L copied)"
+else
+    die "setup.sh $(L not_found_in) $SCRIPT_DIR"
+fi
+
+if [[ -f "$SCRIPT_DIR/update.sh" ]]; then
+    cp "$SCRIPT_DIR/update.sh" "$INSTALL_DIR/update.sh"
+    ok "update.sh $(L copied)"
+else
+    die "update.sh $(L not_found_in) $SCRIPT_DIR"
+fi
+
 # Config
 if [[ -f "$INSTALL_DIR/config.php" ]]; then
     info "config.php existiert bereits, wird nicht ueberschrieben"
@@ -416,6 +440,8 @@ chown -R www-data:www-data "$INSTALL_DIR"
 chmod 644 "$INSTALL_DIR/index.php" "$INSTALL_DIR/lang.php"
 chmod 644 "$INSTALL_DIR/api/"*.php
 chmod 644 "$INSTALL_DIR/js/"*.js
+chmod 644 "$INSTALL_DIR/public/style.css"
+chmod 755 "$INSTALL_DIR/setup.sh" "$INSTALL_DIR/update.sh"
 chmod 640 "$INSTALL_DIR/config.php"
 chmod 750 "$INSTALL_DIR/data"
 ok "$(L perms_set)"
@@ -794,6 +820,10 @@ VERIFY_OK=true
 [[ ! -f "$INSTALL_DIR/config.php" ]]  && fail "config.php missing" && VERIFY_OK=false
 [[ ! -d "$INSTALL_DIR/api" ]]         && fail "api/ directory missing" && VERIFY_OK=false
 [[ ! -d "$INSTALL_DIR/js" ]]          && fail "js/ directory missing" && VERIFY_OK=false
+[[ ! -d "$INSTALL_DIR/public" ]]      && fail "public/ directory missing" && VERIFY_OK=false
+[[ ! -f "$INSTALL_DIR/public/style.css" ]] && fail "public/style.css missing" && VERIFY_OK=false
+[[ ! -f "$INSTALL_DIR/setup.sh" ]]    && fail "setup.sh missing" && VERIFY_OK=false
+[[ ! -f "$INSTALL_DIR/update.sh" ]]   && fail "update.sh missing" && VERIFY_OK=false
 [[ ! -S "$PHP_SOCK" ]]                && fail "PHP-FPM not running" && VERIFY_OK=false
 systemctl is-active --quiet nginx     || { fail "Nginx not running"; VERIFY_OK=false; }
 
@@ -858,4 +888,3 @@ if [[ -z "$WHITELIST_IPS" ]]; then
 fi
 echo -e "  ${DIM}  $STEP_N. $(L step_open)${NC}"
 echo ""
-

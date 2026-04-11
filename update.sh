@@ -21,10 +21,71 @@ ok()   { echo -e "  ${GREEN}✓${NC}  $1"; }
 warn() { echo -e "  ${YELLOW}⚠${NC}  $1"; }
 fail() { echo -e "  ${RED}✗${NC}  $1"; }
 info() { echo -e "  ${CYAN}ℹ${NC}  $1"; }
+cleanup() { [[ -n "${WORK_DIR:-}" && -d "${WORK_DIR:-}" ]] && rm -rf "$WORK_DIR"; }
+trap cleanup EXIT
+
+require_file() {
+    local file="$1"
+    [[ -f "$file" ]] || { fail "Pflichtdatei fehlt: $file"; exit 1; }
+}
+
+require_dir() {
+    local dir="$1"
+    [[ -d "$dir" ]] || { fail "Pflichtverzeichnis fehlt: $dir"; exit 1; }
+}
+
+set_permissions() {
+    find "$INSTALL_DIR" -type d -exec chmod 755 {} + 2>/dev/null || true
+    find "$INSTALL_DIR" -type f -exec chmod 644 {} + 2>/dev/null || true
+    chown -R www-data:www-data "$INSTALL_DIR" 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR/setup.sh" "$INSTALL_DIR/update.sh" 2>/dev/null || true
+    chmod 640 "$INSTALL_DIR/config.php" 2>/dev/null || true
+    chown root:www-data "$INSTALL_DIR/config.php" 2>/dev/null || true
+    chmod 750 "$INSTALL_DIR/data" 2>/dev/null || true
+    chown -R www-data:www-data "$INSTALL_DIR/data" 2>/dev/null || true
+}
+
+validate_tree() {
+    local tree="$1"
+    require_file "$tree/index.php"
+    require_file "$tree/lang.php"
+    require_file "$tree/setup.sh"
+    require_file "$tree/update.sh"
+    require_dir "$tree/api"
+    require_dir "$tree/js"
+    require_dir "$tree/public"
+    require_file "$tree/public/style.css"
+
+    php -l "$tree/index.php" >/dev/null
+    while IFS= read -r phpfile; do
+        php -l "$phpfile" >/dev/null
+    done < <(find "$tree/api" -maxdepth 1 -type f -name '*.php' | sort)
+}
+
+sync_release() {
+    local source="$1"
+    local backup_dir="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
+
+    mkdir -p "$BACKUP_ROOT" "$backup_dir"
+    rsync -a --exclude='.git' "$INSTALL_DIR/" "$backup_dir/" >/dev/null
+    info "Backup erstellt: $backup_dir"
+
+    rsync -a --delete \
+        --exclude='.git' \
+        --exclude='config.php' \
+        --exclude='data/' \
+        "$source/" "$INSTALL_DIR/"
+
+    mkdir -p "$INSTALL_DIR/data"
+    set_permissions
+    validate_tree "$INSTALL_DIR"
+}
 
 # ── Defaults ──────────────────────────────────────────────
 INSTALL_DIR="/var/www/server-admin"
 SOURCE_DIR=""
+BACKUP_ROOT="/root/floppyops-lite-update-backups"
+WORK_DIR=""
 
 # ── Parse Arguments ───────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -62,80 +123,35 @@ echo ""
 
 # ── Update-Methode bestimmen ─────────────────────────────
 if [[ -n "$SOURCE_DIR" ]]; then
-    # Update aus lokalem Verzeichnis
-    if [[ ! -f "$SOURCE_DIR/index.php" ]]; then
-        fail "Keine gueltige Quelle: $SOURCE_DIR/index.php nicht gefunden"
-        exit 1
-    fi
+    [[ -f "$SOURCE_DIR/index.php" ]] || { fail "Keine gueltige Quelle: $SOURCE_DIR/index.php nicht gefunden"; exit 1; }
     info "Update-Quelle: $SOURCE_DIR"
 elif [[ -d "$INSTALL_DIR/.git" ]]; then
-    # Git Pull
-    info "Git-Repository erkannt, fuehre git pull aus..."
+    info "Git-Repository erkannt, hole Release-Stand aus Git..."
     cd "$INSTALL_DIR"
-    git pull --ff-only 2>&1 | while read -r line; do echo "  $line"; done
-    SOURCE_DIR="$INSTALL_DIR"
-    NEW_VERSION=$(grep -oP "define\('APP_VERSION',\s*'\\K[^']+" "$INSTALL_DIR/index.php" 2>/dev/null || echo "unbekannt")
-    echo ""
-    ok "Update abgeschlossen: v$OLD_VERSION → v$NEW_VERSION"
-    # Bei Git ist alles schon am richtigen Platz, nur Rechte setzen
-    chown -R www-data:www-data "$INSTALL_DIR" 2>/dev/null || true
-    chmod 644 "$INSTALL_DIR/index.php" "$INSTALL_DIR/lang.php" 2>/dev/null || true
-    chmod 644 "$INSTALL_DIR/api/"*.php 2>/dev/null || true
-    chmod 644 "$INSTALL_DIR/js/"*.js 2>/dev/null || true
-    chmod 640 "$INSTALL_DIR/config.php" 2>/dev/null || true
-    chmod 750 "$INSTALL_DIR/data" 2>/dev/null || true
-    exit 0
+    if [[ -n "$(git status --porcelain)" ]]; then
+        fail "Git-Worktree ist nicht sauber. Bitte zuerst committen oder stashen."
+        exit 1
+    fi
+    git fetch origin main 2>&1 | while read -r line; do echo "  $line"; done
+    git pull --ff-only origin main 2>&1 | while read -r line; do echo "  $line"; done
+    WORK_DIR="$(mktemp -d /tmp/floppyops-lite-update-XXXXXX)"
+    git archive --format=tar HEAD | tar -xf - -C "$WORK_DIR"
+    SOURCE_DIR="$WORK_DIR"
 else
     fail "Kein Git-Repo und kein --from angegeben"
     echo "  Nutze: bash update.sh --from /pfad/zu/floppyops-lite"
     exit 1
 fi
 
-# ── Dateien kopieren (nur bei --from) ────────────────────
-info "Kopiere Dateien..."
+info "Validiere Release-Dateisatz..."
+validate_tree "$SOURCE_DIR"
+ok "Release-Dateisatz validiert"
 
-# PHP Hauptdateien
-cp "$SOURCE_DIR/index.php" "$INSTALL_DIR/index.php"
-cp "$SOURCE_DIR/lang.php" "$INSTALL_DIR/lang.php"
-ok "index.php + lang.php"
+info "Synchronisiere vollstaendigen Release-Stand..."
+sync_release "$SOURCE_DIR"
+ok "Dateien vollstaendig synchronisiert"
 
-# API-Module
-if [[ -d "$SOURCE_DIR/api" ]]; then
-    mkdir -p "$INSTALL_DIR/api"
-    cp "$SOURCE_DIR/api/"*.php "$INSTALL_DIR/api/"
-    ok "api/ Module ($(ls "$SOURCE_DIR/api/"*.php | wc -l) Dateien)"
-fi
-
-# JavaScript-Module
-if [[ -d "$SOURCE_DIR/js" ]]; then
-    mkdir -p "$INSTALL_DIR/js"
-    cp "$SOURCE_DIR/js/"*.js "$INSTALL_DIR/js/"
-    ok "js/ Module ($(ls "$SOURCE_DIR/js/"*.js | wc -l) Dateien)"
-fi
-
-# Setup-Script aktualisieren
-if [[ -f "$SOURCE_DIR/setup.sh" ]]; then
-    cp "$SOURCE_DIR/setup.sh" "$INSTALL_DIR/setup.sh"
-    ok "setup.sh"
-fi
-
-# Alte Dateien aufraeumen (aus Single-File-Version)
-for OLD_FILE in "$INSTALL_DIR/js/app.js" "$INSTALL_DIR/js/init.js" "$INSTALL_DIR/js/ui.js"; do
-    [[ -f "$OLD_FILE" ]] && rm -f "$OLD_FILE" && info "Alte Datei entfernt: $(basename $OLD_FILE)"
-done
-[[ -d "$INSTALL_DIR/views" ]] && rm -rf "$INSTALL_DIR/views" && info "Altes views/ Verzeichnis entfernt"
-
-# config.php wird NIE ueberschrieben
 info "config.php bleibt unveraendert"
-
-# Rechte setzen
-chown -R www-data:www-data "$INSTALL_DIR"
-chmod 644 "$INSTALL_DIR/index.php" "$INSTALL_DIR/lang.php" 2>/dev/null || true
-chmod 644 "$INSTALL_DIR/api/"*.php 2>/dev/null || true
-chmod 644 "$INSTALL_DIR/js/"*.js 2>/dev/null || true
-chmod 640 "$INSTALL_DIR/config.php" 2>/dev/null || true
-chmod 750 "$INSTALL_DIR/data" 2>/dev/null || true
-ok "Berechtigungen gesetzt"
 
 # ── Ergebnis ─────────────────────────────────────────────
 NEW_VERSION=$(grep -oP "define\('APP_VERSION',\s*'\\K[^']+" "$INSTALL_DIR/index.php" 2>/dev/null || echo "unbekannt")

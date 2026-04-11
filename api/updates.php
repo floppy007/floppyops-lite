@@ -18,6 +18,38 @@
  * @param string $action Der API-Action-Name
  * @return bool true wenn behandelt
  */
+function runLiteUpdateCommand(string $cmd): array {
+    $output = shell_exec($cmd . ' 2>&1');
+    return [
+        'ok' => is_string($output),
+        'output' => trim((string)$output),
+    ];
+}
+
+function downloadLiteReleaseToTemp(): array {
+    $tmpBase = sys_get_temp_dir() . '/floppyops-lite-update-' . bin2hex(random_bytes(6));
+    if (!@mkdir($tmpBase, 0700, true) && !is_dir($tmpBase)) {
+        return ['ok' => false, 'error' => 'Temp-Verzeichnis konnte nicht angelegt werden'];
+    }
+
+    $archive = $tmpBase . '/release.tar.gz';
+    $cmd = 'curl -L --fail -A ' . escapeshellarg('FloppyOps-Lite') .
+        ' -o ' . escapeshellarg($archive) .
+        ' https://codeload.github.com/floppy007/floppyops-lite/tar.gz/refs/heads/main' .
+        ' && tar -xzf ' . escapeshellarg($archive) . ' -C ' . escapeshellarg($tmpBase);
+    $res = runLiteUpdateCommand($cmd);
+    if (!$res['ok']) {
+        return ['ok' => false, 'error' => 'Download des Release-Archivs fehlgeschlagen', 'output' => $res['output']];
+    }
+
+    $entries = glob($tmpBase . '/floppyops-lite-*', GLOB_ONLYDIR) ?: [];
+    if (empty($entries)) {
+        return ['ok' => false, 'error' => 'Entpacktes Release-Verzeichnis nicht gefunden', 'output' => $res['output']];
+    }
+
+    return ['ok' => true, 'dir' => $entries[0], 'temp_base' => $tmpBase, 'output' => $res['output']];
+}
+
 function handleUpdatesAPI(string $action): bool {
     // GET: Versionsvergleich lokal vs. GitHub
     if ($action === 'update-check') {
@@ -49,82 +81,32 @@ function handleUpdatesAPI(string $action): bool {
     // POST: Update durchfuehren (git pull oder Direct Download)
     if ($action === 'update-pull' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
-        $installDir = __DIR__ . '/..';
-        $isGit = is_dir($installDir . '/.git') || is_dir(dirname($installDir) . '/.git');
-        if ($isGit && !is_dir($installDir . '/.git')) $installDir = dirname($installDir);
+        $appDir = dirname(__DIR__);
+        $isGit = is_dir($appDir . '/.git');
+        $cleanupDir = null;
 
         if ($isGit) {
-            // Git-based update — holt alle Dateien inkl. api/ und js/
-            $out = shell_exec('cd ' . escapeshellarg($installDir) . ' && git pull origin main 2>&1') ?? '';
-            $ok = str_contains($out, 'Already up to date') || str_contains($out, 'Fast-forward') || str_contains($out, 'files changed');
-            if ($ok && $installDir !== dirname(__DIR__)) {
-                // Hauptdateien kopieren
-                foreach (['index.php', 'lang.php', 'setup.sh', 'update.sh'] as $f) {
-                    if (file_exists($installDir . '/' . $f)) copy($installDir . '/' . $f, dirname(__DIR__) . '/' . $f);
-                }
-                // API-Module kopieren
-                if (is_dir($installDir . '/api')) {
-                    @mkdir(dirname(__DIR__) . '/api', 0755, true);
-                    foreach (glob($installDir . '/api/*.php') as $f) {
-                        copy($f, dirname(__DIR__) . '/api/' . basename($f));
-                    }
-                }
-                // JS-Module kopieren
-                if (is_dir($installDir . '/js')) {
-                    @mkdir(dirname(__DIR__) . '/js', 0755, true);
-                    foreach (glob($installDir . '/js/*.js') as $f) {
-                        copy($f, dirname(__DIR__) . '/js/' . basename($f));
-                    }
-                }
-            }
+            $res = runLiteUpdateCommand('bash ' . escapeshellarg($appDir . '/update.sh') . ' --dir ' . escapeshellarg($appDir));
         } else {
-            // Direct download from GitHub (alle Dateien einzeln)
-            $ctx = stream_context_create(['http' => ['timeout' => 15, 'header' => "User-Agent: FloppyOps-Lite\r\n"]]);
-            $ok = true; $out = '';
-            $baseUrl = 'https://raw.githubusercontent.com/floppy007/floppyops-lite/main';
-            $appDir = dirname(__DIR__);
-
-            // Hauptdateien
-            foreach (['index.php', 'lang.php', 'setup.sh', 'update.sh'] as $f) {
-                $content = @file_get_contents("{$baseUrl}/{$f}", false, $ctx);
-                if ($content) {
-                    file_put_contents($appDir . '/' . $f, $content);
-                    $out .= "{$f} aktualisiert\n";
-                } else {
-                    $out .= "{$f} Download fehlgeschlagen\n";
-                    $ok = false;
-                }
+            $download = downloadLiteReleaseToTemp();
+            if (!$download['ok']) {
+                echo json_encode(['ok' => false, 'error' => $download['error'], 'output' => $download['output'] ?? '']);
+                return true;
             }
-
-            // API-Module
-            @mkdir($appDir . '/api', 0755, true);
-            foreach (['dashboard','fail2ban','firewall','nginx','security','updates','vms','wireguard','zfs'] as $m) {
-                $content = @file_get_contents("{$baseUrl}/api/{$m}.php", false, $ctx);
-                if ($content) {
-                    file_put_contents($appDir . "/api/{$m}.php", $content);
-                    $out .= "api/{$m}.php aktualisiert\n";
-                } else {
-                    $out .= "api/{$m}.php fehlgeschlagen\n";
-                    $ok = false;
-                }
-            }
-
-            // JS-Module
-            @mkdir($appDir . '/js', 0755, true);
-            foreach (['core','dashboard','fail2ban','firewall','nginx','security','updates','vms','wireguard','zfs'] as $m) {
-                $content = @file_get_contents("{$baseUrl}/js/{$m}.js", false, $ctx);
-                if ($content) {
-                    file_put_contents($appDir . "/js/{$m}.js", $content);
-                    $out .= "js/{$m}.js aktualisiert\n";
-                } else {
-                    $out .= "js/{$m}.js fehlgeschlagen\n";
-                    $ok = false;
-                }
-            }
+            $cleanupDir = $download['temp_base'];
+            $res = runLiteUpdateCommand(
+                'bash ' . escapeshellarg($appDir . '/update.sh') .
+                ' --dir ' . escapeshellarg($appDir) .
+                ' --from ' . escapeshellarg($download['dir'])
+            );
         }
-        // Reload PHP-FPM
+
+        if ($cleanupDir && is_dir($cleanupDir)) {
+            shell_exec('rm -rf ' . escapeshellarg($cleanupDir) . ' 2>/dev/null');
+        }
+
         shell_exec('sudo systemctl reload php*-fpm 2>&1 || sudo systemctl restart php*-fpm 2>&1');
-        echo json_encode(['ok' => $ok, 'output' => trim($out)]);
+        echo json_encode(['ok' => $res['ok'], 'output' => $res['output']]);
         return true;
     }
 
