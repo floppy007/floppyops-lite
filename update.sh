@@ -88,22 +88,42 @@ install_pam_helper() {
     local source="$INSTALL_DIR/helpers/pam_auth.py"
     [[ -f "$source" ]] || return 0
 
-    if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-        warn "PAM-Helper-Update uebersprungen (kein root-Kontext)"
+    if ! run_root_cmd true 2>/dev/null; then
+        warn "PAM-Helper-Update uebersprungen (kein root/sudo ohne Passwort)"
         return 0
     fi
 
-    mkdir -p /usr/local/libexec/floppyops-lite
-    install -o root -g www-data -m 0750 "$source" /usr/local/libexec/floppyops-lite/pam_auth.py
+    if ! python3 - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec("pam") or importlib.util.find_spec("PAM") else 1)
+PY
+    then
+        info "Installiere python3-pam..."
+        run_root_cmd apt-get update
+        run_root_cmd apt-get install -y python3-pam
+        ok "python3-pam installiert"
+    fi
+
+    run_root_cmd mkdir -p /usr/local/libexec/floppyops-lite
+    run_root_cmd install -o root -g www-data -m 0750 "$source" /usr/local/libexec/floppyops-lite/pam_auth.py
     ok "PAM-Helper aktualisiert"
 
-    cat > /etc/pam.d/floppyops-lite <<'PAMEOF'
+    run_root_cmd tee /etc/pam.d/floppyops-lite >/dev/null <<'PAMEOF'
 # PAM stack for FloppyOps Lite local Linux auth
 @include common-auth
 @include common-account
 PAMEOF
-    chmod 644 /etc/pam.d/floppyops-lite
+    run_root_cmd chmod 644 /etc/pam.d/floppyops-lite
     ok "PAM-Service aktualisiert"
+
+    run_root_cmd mkdir -p /etc/sudoers.d
+    if ! run_root_cmd grep -qF 'www-data ALL=(root) NOPASSWD: /usr/local/libexec/floppyops-lite/pam_auth.py --user *' /etc/sudoers.d/server-admin 2>/dev/null; then
+        run_root_cmd sh -c "printf '%s\n' 'www-data ALL=(root) NOPASSWD: /usr/local/libexec/floppyops-lite/pam_auth.py --user *' >> /etc/sudoers.d/server-admin"
+    fi
+    run_root_cmd chmod 440 /etc/sudoers.d/server-admin
+    run_root_cmd visudo -cf /etc/sudoers.d/server-admin >/dev/null
+    ok "Sudoers fuer PAM-Helper aktualisiert"
 }
 
 set_permissions() {

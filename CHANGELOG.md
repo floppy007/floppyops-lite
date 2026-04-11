@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.6 (2026-04-11)
+
+### Fixed
+- **Updater repairs PAM login prerequisites completely**: `update.sh` now also ensures `python3-pam` is installed and re-adds the `sudoers` rule for the dedicated PAM helper, so existing Lite installs do not lose Linux login support after partial host changes
+
 ## v1.2.5 (2026-04-11)
 
 ### Fixed
