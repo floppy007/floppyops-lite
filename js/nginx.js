@@ -3,12 +3,20 @@
  * Nginx — Sites, System-Checks, SSL Health
  */
 
+function nginxLoadingMarkup(label) {
+    return '<div class="empty"><span class="loading-spinner" style="width:14px;height:14px;border-width:2px"></span> ' + label + '</div>';
+}
+
 // ── Nginx System-Checks (IP-Forwarding, NAT, Certbot) ──
 async function loadNginxChecks() {
+    const el = document.getElementById('nginxChecks');
+    if (el) {
+        el.innerHTML = '<div style="color:var(--text3);font-size:.72rem;padding:6px"><span class="loading-spinner" style="width:10px;height:10px;border-width:1.5px;margin-right:6px"></span>Pruefe...</div>';
+    }
     try {
         const d = await api('nginx-checks');
         if (!d.ok) return;
-        const el = document.getElementById('nginxChecks');
+        if (!el) return;
         el.innerHTML = d.checks.map(c => {
             const icon = c.ok
                 ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>'
@@ -49,10 +57,14 @@ async function nginxApplyFix(fixId, extra) {
 let sitesData = [];
 
 async function loadNginx() {
+    const grid = document.getElementById('siteGrid');
+    if (grid) {
+        grid.innerHTML = nginxLoadingMarkup('Proxy-Sites werden geladen...');
+    }
     try {
         sitesData = await api('nginx-sites');
         document.getElementById('siteCount').textContent = sitesData.length;
-        const grid = document.getElementById('siteGrid');
+        if (!grid) return;
         grid.innerHTML = '';
 
         if (sitesData.length === 0) {
@@ -106,6 +118,9 @@ async function loadNginx() {
         // Lazy: SSL-Expiry nachladen
         loadNginxSsl();
     } catch (e) {
+        if (grid) {
+            grid.innerHTML = '<div class="empty" style="color:var(--red)">Proxy-Sites konnten nicht geladen werden</div>';
+        }
     }
 }
 

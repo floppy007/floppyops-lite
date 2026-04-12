@@ -4,6 +4,24 @@
  */
 
 // ── Navigation & Tabs ────────────────────────────────
+function getActiveSubTab(group, fallback) {
+    const active = document.querySelector('#' + group + 'SubTabs .sub-tab.active');
+    const onclick = active ? active.getAttribute('onclick') || '' : '';
+    const match = onclick.match(/switchSubTab\('[^']+','([^']+)'\)/);
+    return match ? match[1] : fallback;
+}
+
+function loadNetworkSection(sub) {
+    if (sub === 'wireguard') {
+        loadWg();
+        startWgGraph();
+        return;
+    }
+    stopWgGraph();
+    loadNginx();
+    loadNginxChecks();
+}
+
 function switchTab(tabName) {
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -15,7 +33,7 @@ function switchTab(tabName) {
 
     stopWgGraph();
     if (tabName === 'security') { Promise.all([loadFwTemplates(), loadFwVmList()]); }
-    if (tabName === 'network') { loadNginx(); loadNginxChecks(); loadWg(); startWgGraph(); }
+    if (tabName === 'network') { loadNetworkSection(getActiveSubTab('network', 'nginx')); }
     if (tabName === 'zfs') loadZfs();
     if (tabName === 'system') loadUpdates();
 }
@@ -40,8 +58,7 @@ function switchSubTab(group, sub) {
     if (group === 'security' && sub === 'portscan') { loadSecScan(); loadSecFwRules(); }
     if (group === 'security' && sub === 'fail2ban') loadF2b();
     if (group === 'security' && sub === 'firewall') { loadFwTemplates(); loadFwVmList(); }
-    if (group === 'network' && sub === 'nginx') { loadNginx(); loadNginxChecks(); }
-    if (group === 'network' && sub === 'wireguard') { loadWg(); startWgGraph(); }
+    if (group === 'network') loadNetworkSection(sub);
     if (group === 'system' && sub === 'zfs') loadZfs();
     if (group === 'system' && sub === 'updates') loadUpdates();
 }

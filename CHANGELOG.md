@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2.9 (2026-04-12)
+
+### Fixed
+- **PAM login works reliably again**: the PHP PAM helper process now uses the correct pipe directions, fixing the live `Bad file descriptor` failure during Linux/PAM sign-in
+- **Network tab no longer feels stuck on open**: Nginx now shows an immediate loading spinner while proxy sites are fetched
+- **Network tab avoids unnecessary background work**: opening the grouped `Network` section now loads only the active sub-tab instead of always starting both Nginx and WireGuard paths
+- **Hash restore for `#network` respects the active/default sub-tab**: restores now land on the intended Nginx view instead of jumping into WireGuard
+
+### Improved
+- **Updates panel UX cleaned up**: the dashboard updates card now opens the correct tab, app updates show a busy state, and update action labels stay consistent after reload/check/install flows
+- **Updates panel localization improved**: visible update/repository status strings were moved out of hardcoded JS text into `lang.php`
+- **Updates panel styling is less inline-heavy**: repeated card/banner/status layout styling now uses dedicated CSS classes instead of repeating large inline style blocks
+- **Setup verification is stricter**: `setup.sh` now validates that `helpers/pam_auth.py` is present in the installed tree
+
 ## v1.2.8 (2026-04-11)
 
 ### Fixed

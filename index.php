@@ -11,7 +11,7 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.2.8');
+define('APP_VERSION', '1.2.9');
 require_once __DIR__ . '/config.php';
 session_start();
 require_once __DIR__ . '/lang.php';
@@ -38,9 +38,9 @@ function authenticatePamUser(string $user, string $pass): array {
 
     $cmd = ['sudo', '-n', $helper, '--user', $user];
     $spec = [
-        0 => ['pipe', 'w'],
-        1 => ['pipe', 'r'],
-        2 => ['pipe', 'r'],
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
     ];
     $proc = proc_open($cmd, $spec, $pipes);
     if (!is_resource($proc)) {
@@ -1012,6 +1012,132 @@ body::after {
 
 /* ── Nginx Site Cards ───────────────────────────────── */
 .site-grid { display: flex; flex-direction: column; gap: 10px; }
+.updates-card {
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+}
+.updates-card-body { padding: 16px; }
+.updates-banner {
+    display: none;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 10px;
+}
+.updates-banner-danger {
+    background: rgba(220,53,69,.05);
+    border: 1px solid rgba(220,53,69,.15);
+}
+.updates-banner-warn {
+    background: rgba(255,193,7,.05);
+    border: 1px solid rgba(255,193,7,.15);
+}
+.updates-banner-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: .76rem;
+}
+.updates-banner-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.updates-banner-icon-danger { background: rgba(220,53,69,.1); }
+.updates-banner-icon-warn { background: rgba(255,193,7,.1); }
+.updates-status {
+    padding: 16px;
+    margin-bottom: 12px;
+}
+.updates-status-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.updates-status-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(40,167,69,.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.updates-status-text { font-size: .85rem; font-weight: 600; }
+.updates-status-sub { font-size: .68rem; color: var(--text3); }
+.updates-output {
+    display: none;
+    background: rgba(0,0,0,.15);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: .62rem;
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    color: var(--text3);
+}
+.updates-loader {
+    color: var(--text3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.updates-section-title {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.updates-inline-note { font-size: .58rem; color: var(--text3); margin-left: auto; }
+.updates-grid {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.updates-grid-col {
+    flex: 1;
+    min-width: 300px;
+    padding: 14px 16px;
+}
+.updates-schedule {
+    margin-top: 6px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: .68rem;
+    flex-wrap: wrap;
+    opacity: .4;
+    pointer-events: none;
+}
+.updates-schedule-wide {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: .72rem;
+    flex-wrap: wrap;
+    opacity: .4;
+    pointer-events: none;
+}
+.updates-select {
+    background: var(--surface-solid);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: .68rem;
+    color: var(--text);
+}
+.updates-select-compact {
+    padding: 2px 5px;
+    font-size: .66rem;
+}
 
 .site-row {
     display: flex;
@@ -1245,10 +1371,10 @@ body::after {
                     <div class="stat-value" id="sNginxSites">---</div>
                     <div class="stat-sub"><?= __('active_sites') ?></div>
                 </div>
-                <div class="stat-card" style="cursor:pointer" onclick="switchTab('updates')">
-                    <div class="stat-label"><?= $lang === 'en' ? 'Updates' : 'Updates' ?></div>
+                <div class="stat-card" style="cursor:pointer" onclick="switchTab('system')">
+                    <div class="stat-label"><?= __('updates_title') ?></div>
                     <div class="stat-value" id="sUpdates">---</div>
-                    <div class="stat-sub"><?= $lang === 'en' ? 'available' : 'verfügbar' ?></div>
+                    <div class="stat-sub"><?= __('updates_available_short') ?></div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Subscription</div>
@@ -1671,18 +1797,18 @@ body::after {
             <div class="section-head">
                 <div class="section-title">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                    Updates
+                    <?= __('updates_title') ?>
                     <span id="updCount" class="count" style="font-size:.58rem"> - </span>
                 </div>
                 <div style="display:flex;gap:6px">
-                    <button class="btn btn-sm" onclick="aptRefresh()" id="btnAptRefresh"><?= $lang === 'en' ? 'Check for updates' : 'Nach Updates suchen' ?></button>
+                    <button class="btn btn-sm" onclick="aptRefresh()" id="btnAptRefresh"><?= __('updates_check') ?></button>
                 </div>
             </div>
 
             <!-- Banners -->
-            <div id="updRepoBanner" style="display:none;background:rgba(220,53,69,.05);border:1px solid rgba(220,53,69,.15);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px">
-                <div style="display:flex;align-items:center;gap:12px;font-size:.76rem">
-                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(220,53,69,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <div id="updRepoBanner" class="updates-banner updates-banner-danger">
+                <div class="updates-banner-row">
+                    <div class="updates-banner-icon updates-banner-icon-danger">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     </div>
                     <div style="flex:1">
@@ -1693,9 +1819,9 @@ body::after {
                 </div>
             </div>
 
-            <div id="updRebootBanner" style="display:none;background:rgba(255,193,7,.05);border:1px solid rgba(255,193,7,.15);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px">
-                <div style="display:flex;align-items:center;gap:12px;font-size:.76rem">
-                    <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,193,7,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <div id="updRebootBanner" class="updates-banner updates-banner-warn">
+                <div class="updates-banner-row">
+                    <div class="updates-banner-icon updates-banner-icon-warn">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--yellow)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     </div>
                     <div>
@@ -1706,25 +1832,25 @@ body::after {
             </div>
 
             <!-- Update Status -->
-            <div style="background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:16px;margin-bottom:12px">
-                <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-                    <div id="updStatusIcon" style="width:40px;height:40px;border-radius:10px;background:rgba(40,167,69,.1);display:flex;align-items:center;justify-content:center">
+            <div class="updates-card updates-status">
+                <div class="updates-status-row">
+                    <div id="updStatusIcon" class="updates-status-icon">
                         <div class="spinner-small"></div>
                     </div>
                     <div style="flex:1">
-                        <div id="updStatusText" style="font-size:.85rem;font-weight:600"><?= $lang === 'en' ? 'Checking...' : 'Prüfe...' ?></div>
-                        <div id="updStatusSub" style="font-size:.68rem;color:var(--text3)"></div>
+                        <div id="updStatusText" class="updates-status-text"><?= __('updates_checking') ?></div>
+                        <div id="updStatusSub" class="updates-status-sub"></div>
                     </div>
-                    <button class="btn btn-sm btn-accent" onclick="aptUpgrade()" id="btnAptUpgrade" style="display:none"><?= $lang === 'en' ? 'Install updates' : 'Updates installieren' ?></button>
+                    <button class="btn btn-sm btn-accent" onclick="aptUpgrade()" id="btnAptUpgrade" style="display:none"><?= __('updates_install') ?></button>
                 </div>
-                <div id="updOutput" style="display:none;background:rgba(0,0,0,.15);border-radius:var(--radius-sm);padding:10px;font-family:var(--mono);font-size:.62rem;max-height:180px;overflow-y:auto;white-space:pre-wrap;color:var(--text3)"></div>
+                <div id="updOutput" class="updates-output"></div>
             </div>
 
             <!-- Repositories -->
-            <div style="background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--radius);overflow:hidden;margin-bottom:12px">
-                <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:10px">
+            <div class="updates-card" style="overflow:hidden;margin-bottom:12px">
+                <div class="updates-section-title">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                    <span style="font-size:.78rem;font-weight:600">Repositories</span>
+                    <span style="font-size:.78rem;font-weight:600"><?= __('updates_repositories') ?></span>
                     <span id="repoSubBadge" style="display:none;font-size:.56rem;padding:2px 6px;border-radius:8px;margin-left:4px"></span>
                     <button class="btn btn-sm btn-green" onclick="repoAddNoSub()" id="btnRepoAddNoSub" style="display:none;margin-left:auto"><?= $lang === 'en' ? '+ Add No-Subscription' : '+ No-Subscription hinzufügen' ?></button>
                 </div>
@@ -1733,32 +1859,32 @@ body::after {
                     <span id="repoWarningText"></span>
                 </div>
                 <div id="repoList" style="padding:0;font-size:.72rem">
-                    <div style="color:var(--text3);padding:12px 16px"><span class="spinner-small"></span> Laden...</div>
+                    <div class="updates-loader" style="padding:12px 16px"><span class="spinner-small"></span> <?= __('loading') ?></div>
                 </div>
             </div>
 
             <!-- App + Auto-Updates -->
-            <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="updates-grid">
                 <!-- FloppyOps Lite -->
-                <div style="flex:1;min-width:300px;background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:14px 16px">
+                <div class="updates-card updates-grid-col">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span style="font-size:.78rem;font-weight:600">FloppyOps Lite</span>
                     </div>
                     <div id="appUpdateInfo" style="font-size:.74rem">
-                        <div style="color:var(--text3);display:flex;align-items:center;gap:6px"><div class="spinner-small"></div> Prüfe...</div>
+                        <div class="updates-loader"><div class="spinner-small"></div> <?= __('updates_checking') ?></div>
                     </div>
                     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle)">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.72rem">
                             <input type="checkbox" id="appAutoUpdateToggle" onchange="appAutoUpdateChanged()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer">
-                            <span style="color:var(--text2)"><?= $lang === 'en' ? 'Auto-update app' : 'App automatisch aktualisieren' ?></span>
+                            <span style="color:var(--text2)"><?= __('updates_app_auto') ?></span>
                         </label>
-                        <div id="appAutoSchedule" style="margin-top:6px;display:flex;gap:6px;align-items:center;font-size:.68rem;flex-wrap:wrap;opacity:.4;pointer-events:none">
-                            <select id="appAutoDay" onchange="appAutoUpdateChanged()" style="background:var(--surface-solid);border:1px solid var(--border-subtle);border-radius:4px;padding:2px 5px;font-size:.66rem;color:var(--text)">
-                                <option value="0"><?= $lang === 'en' ? 'Daily' : 'Taeglich' ?></option>
+                        <div id="appAutoSchedule" class="updates-schedule">
+                            <select id="appAutoDay" onchange="appAutoUpdateChanged()" class="updates-select updates-select-compact">
+                                <option value="0"><?= __('updates_daily') ?></option>
                                 <?php foreach (['Mo','Di','Mi','Do','Fr','Sa','So'] as $i => $d): ?><option value="<?= $i+1 ?>"><?= $d ?></option><?php endforeach; ?>
                             </select>
-                            <select id="appAutoHour" onchange="appAutoUpdateChanged()" style="background:var(--surface-solid);border:1px solid var(--border-subtle);border-radius:4px;padding:2px 5px;font-size:.66rem;color:var(--text)">
+                            <select id="appAutoHour" onchange="appAutoUpdateChanged()" class="updates-select updates-select-compact">
                                 <?php for ($h = 0; $h < 24; $h++): ?><option value="<?= $h ?>"<?= $h === 4 ? ' selected' : '' ?>><?= sprintf('%02d:00', $h) ?></option><?php endfor; ?>
                             </select>
                         </div>
@@ -1766,23 +1892,23 @@ body::after {
                 </div>
 
                 <!-- System Auto-Update -->
-                <div style="flex:1;min-width:300px;background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:14px 16px">
+                <div class="updates-card updates-grid-col">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
                         <span style="font-size:.78rem;font-weight:600"><?= $lang === 'en' ? 'System Auto-Update' : 'System Auto-Update' ?></span>
-                        <span id="autoUpdateStatus" style="font-size:.58rem;color:var(--text3);margin-left:auto"></span>
+                        <span id="autoUpdateStatus" class="updates-inline-note"></span>
                     </div>
                     <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.76rem;padding:4px 0">
                         <input type="checkbox" id="autoUpdateToggle" onchange="autoUpdateChanged()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
-                        <span style="color:var(--text2)"><?= $lang === 'en' ? 'Automatic system updates (apt dist-upgrade)' : 'Automatische System-Updates (apt dist-upgrade)' ?></span>
+                        <span style="color:var(--text2)"><?= __('updates_system_auto') ?></span>
                     </label>
-                    <div id="autoUpdateSchedule" style="margin-top:8px;display:flex;gap:8px;align-items:center;font-size:.72rem;flex-wrap:wrap;opacity:.4;pointer-events:none">
-                        <select id="autoUpdateDay" onchange="autoUpdateChanged()" style="background:var(--surface-solid);border:1px solid var(--border-subtle);border-radius:4px;padding:3px 6px;font-size:.68rem;color:var(--text)">
-                            <option value="0"><?= $lang === 'en' ? 'Daily' : 'Taeglich' ?></option>
+                    <div id="autoUpdateSchedule" class="updates-schedule-wide">
+                        <select id="autoUpdateDay" onchange="autoUpdateChanged()" class="updates-select">
+                            <option value="0"><?= __('updates_daily') ?></option>
                             <?php foreach (['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'] as $i => $d): ?><option value="<?= $i+1 ?>"><?= $d ?></option><?php endforeach; ?>
                         </select>
-                        <span style="color:var(--text3)"><?= $lang === 'en' ? 'at' : 'um' ?></span>
-                        <select id="autoUpdateHour" onchange="autoUpdateChanged()" style="background:var(--surface-solid);border:1px solid var(--border-subtle);border-radius:4px;padding:3px 6px;font-size:.68rem;color:var(--text)">
+                        <span style="color:var(--text3)"><?= __('updates_at') ?></span>
+                        <select id="autoUpdateHour" onchange="autoUpdateChanged()" class="updates-select">
                             <?php for ($h = 0; $h < 24; $h++): ?><option value="<?= $h ?>"<?= $h === 3 ? ' selected' : '' ?>><?= sprintf('%02d:00', $h) ?></option><?php endfor; ?>
                         </select>
                         <span id="autoUpdateTz" style="font-size:.6rem;color:var(--text3)"></span>

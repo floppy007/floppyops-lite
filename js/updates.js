@@ -3,6 +3,36 @@
  * Updates — App-Update, Repositories, System-Updates
  */
 
+const UPD_TEXT = {
+    checking: T.updates_checking,
+    checkForUpdates: T.updates_check,
+    installUpdates: T.updates_install,
+    installAllUpdates: T.updates_install_all,
+    installing: T.updates_installing,
+    appUpdating: T.updates_app_updating,
+    appReloading: T.updates_app_reload,
+    appUpdateFailed: T.updates_app_update_failed,
+    systemUpdateFailed: T.updates_system_update_failed,
+    systemCurrent: T.updates_system_current,
+    updatesAvailable: T.updates_count_available,
+    current: T.updates_current,
+    checkFailed: T.updates_check_failed,
+    error: T.error,
+    aptRunning: T.updates_running,
+    confirmInstall: T.updates_confirm_install,
+    updatesInstalled: T.updates_installed,
+    installedLabel: T.updates_installed_label,
+    availableLabel: T.updates_available_label,
+    methodLabel: T.updates_method_label,
+    methodGit: T.updates_method_git,
+    methodDownload: T.updates_method_download,
+    versionAvailable: T.updates_version_available,
+    repoWarnBoth: T.updates_repo_warn_both,
+    repoWarnNoSub: T.updates_repo_warn_no_sub,
+    repoWarnMissingEnt: T.updates_repo_warn_missing_ent,
+    repoWarnNone: T.updates_repo_warn_none,
+};
+
 // ── Init: App-Start ─────────────────────────────────
 loadStats();
 loadDashboardVms();
@@ -18,7 +48,7 @@ if (location.hash && location.hash.length > 1) {
     else if (tabMap[h]) { switchTab(tabMap[h]); }
     else if (document.querySelector('.nav-tab[data-tab="' + h + '"]')) { switchTab(h); }
     // Ensure sub-tab data loads for grouped tabs opened via hash
-    if (h === 'network') switchSubTab('network', 'wireguard');
+    if (h === 'network') switchSubTab('network', getActiveSubTab('network', 'nginx'));
 }
 
 // ═══ Updates Tab ════════════════════════════════════
@@ -42,20 +72,20 @@ async function loadUpdates() {
         const el = document.getElementById('appUpdateInfo');
         if (app.ok) {
             let html = '<div style="display:flex;flex-direction:column;gap:6px">';
-            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">Installiert:</span><span style="font-family:var(--mono);font-weight:600">v' + app.local_version + '</span></div>';
-            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">Verfügbar:</span><span style="font-family:var(--mono)">v' + app.remote_version + '</span></div>';
-            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">Update-Methode:</span><span>' + (app.is_git ? 'Git (git pull)' : 'Download (GitHub)') + '</span></div>';
+            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.installedLabel + ':</span><span style="font-family:var(--mono);font-weight:600">v' + app.local_version + '</span></div>';
+            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.availableLabel + ':</span><span style="font-family:var(--mono)">v' + app.remote_version + '</span></div>';
+            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.methodLabel + ':</span><span>' + (app.is_git ? UPD_TEXT.methodGit : UPD_TEXT.methodDownload) + '</span></div>';
             if (app.update_available) {
                 html += '<div style="margin-top:6px;padding:8px 12px;background:rgba(64,196,255,.06);border:1px solid rgba(64,196,255,.15);border-radius:6px;display:flex;align-items:center;gap:8px">';
-                html += '<span style="color:var(--blue);font-weight:600">v' + app.remote_version + ' verfügbar</span>';
-                html += '<button class="btn btn-sm btn-accent" onclick="appUpdate()" style="margin-left:auto">Update</button></div>';
+                html += '<span style="color:var(--blue);font-weight:600">v' + app.remote_version + ' ' + UPD_TEXT.versionAvailable + '</span>';
+                html += '<button class="btn btn-sm btn-accent" onclick="appUpdate(this)" style="margin-left:auto">Update</button></div>';
             } else {
-                html += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;color:var(--green);font-size:.72rem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Aktuell</div>';
+                html += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;color:var(--green);font-size:.72rem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ' + UPD_TEXT.current + '</div>';
             }
             html += '</div>';
             el.innerHTML = html;
-        } else { el.innerHTML = '<span style="color:var(--text3)">Prüfung fehlgeschlagen</span>'; }
-    } catch(e) { document.getElementById('appUpdateInfo').innerHTML = '<span style="color:var(--red)">Fehler</span>'; }
+        } else { el.innerHTML = '<span style="color:var(--text3)">' + UPD_TEXT.checkFailed + '</span>'; }
+    } catch(e) { document.getElementById('appUpdateInfo').innerHTML = '<span style="color:var(--red)">' + UPD_TEXT.error + '</span>'; }
 
     // System updates — simple status
     try {
@@ -73,12 +103,12 @@ async function loadUpdates() {
         if (sys.count === 0) {
             iconEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
             iconEl.style.background = 'rgba(40,167,69,.1)';
-            textEl.textContent = 'System ist aktuell'; textEl.style.color = 'var(--green)';
+            textEl.textContent = UPD_TEXT.systemCurrent; textEl.style.color = 'var(--green)';
             subEl.textContent = ''; document.getElementById('btnAptUpgrade').style.display = 'none';
         } else {
             iconEl.innerHTML = '<span style="font-size:1.1rem;font-weight:700;color:var(--accent)">' + sys.count + '</span>';
             iconEl.style.background = 'rgba(255,89,0,.1)';
-            textEl.textContent = sys.count + ' Updates verfügbar'; textEl.style.color = 'var(--accent)';
+            textEl.textContent = sys.count + ' ' + UPD_TEXT.updatesAvailable; textEl.style.color = 'var(--accent)';
             const pve = sys.updates.filter(u => u.name.startsWith('pve-') || u.name.startsWith('proxmox-') || u.name.startsWith('qemu'));
             subEl.textContent = (pve.length ? pve.length + ' PVE, ' : '') + (sys.count - pve.length) + ' System';
             document.getElementById('btnAptUpgrade').style.display = '';
@@ -86,39 +116,40 @@ async function loadUpdates() {
         // Dashboard update card
         const dashUpd = document.getElementById('sUpdates');
         if (dashUpd) { dashUpd.textContent = sys.count; dashUpd.style.color = sys.count > 0 ? 'var(--accent)' : 'var(--green)'; }
-    } catch(e) { const t = document.getElementById('updStatusText'); if(t) t.textContent = 'Fehler'; }
+    } catch(e) { const t = document.getElementById('updStatusText'); if(t) t.textContent = UPD_TEXT.error; }
 
     // Repos
     try {
-        const repo = await api('repo-check');
         const el = document.getElementById('repoList');
         const warnEl = document.getElementById('repoWarning');
         const warnText = document.getElementById('repoWarningText');
         const subBadge = document.getElementById('repoSubBadge');
         const addBtn = document.getElementById('btnRepoAddNoSub');
 
+        if (!repo || !repo.ok) throw new Error('repo-check failed');
+
         // Subscription badge
         if (repo.has_subscription) {
-            subBadge.style.display = ''; subBadge.textContent = 'Subscription aktiv';
+            subBadge.style.display = ''; subBadge.textContent = T.updates_repo_subscription_active;
             subBadge.style.background = 'rgba(40,167,69,.1)'; subBadge.style.color = 'var(--green)';
         } else {
-            subBadge.style.display = ''; subBadge.textContent = 'Keine Subscription';
+            subBadge.style.display = ''; subBadge.textContent = T.updates_repo_no_subscription;
             subBadge.style.background = 'rgba(255,193,7,.1)'; subBadge.style.color = 'var(--yellow)';
         }
 
         // Warnings
         if (repo.enterprise_active && repo.no_sub_active) {
             warnEl.style.display = 'flex';
-            warnText.textContent = 'Enterprise und No-Subscription gleichzeitig aktiv - kann zu Konflikten führen. Nur eins aktivieren!';
+            warnText.textContent = UPD_TEXT.repoWarnBoth;
         } else if (repo.enterprise_active && !repo.has_subscription) {
             warnEl.style.display = 'flex';
-            warnText.textContent = 'Enterprise-Repo aktiv ohne Subscription — Updates werden fehlschlagen!';
+            warnText.textContent = UPD_TEXT.repoWarnNoSub;
         } else if (repo.has_subscription && !repo.enterprise_active) {
             warnEl.style.display = 'flex';
-            warnText.textContent = 'Subscription vorhanden aber Enterprise-Repo deaktiviert — kein Zugang zu Enterprise-Updates.';
+            warnText.textContent = UPD_TEXT.repoWarnMissingEnt;
         } else if (!repo.no_sub_active && !repo.enterprise_active) {
             warnEl.style.display = 'flex';
-            warnText.textContent = 'Kein PVE-Repository aktiv - keine Proxmox-Updates möglich!';
+            warnText.textContent = UPD_TEXT.repoWarnNone;
         } else {
             warnEl.style.display = 'none';
         }
@@ -138,10 +169,10 @@ async function loadUpdates() {
             // Info
             html += '<div style="flex:1;min-width:0">';
             html += '<div style="font-size:.76rem;font-weight:600;display:flex;align-items:center;gap:6px">' + label;
-            if (r._standard) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(255,89,0,.08);color:var(--accent)">PVE</span>';
-            if (isEnt && !hasSub && r.active) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(220,53,69,.1);color:var(--red)">keine Lizenz</span>';
-            if (isTest && r.active) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(255,193,7,.1);color:var(--yellow)">Vorsicht</span>';
-            if (missing) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:var(--surface-solid);color:var(--text3)">nicht eingerichtet</span>';
+            if (r._standard) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(255,89,0,.08);color:var(--accent)">' + T.updates_repo_pve_badge + '</span>';
+            if (isEnt && !hasSub && r.active) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(220,53,69,.1);color:var(--red)">' + T.updates_repo_no_license + '</span>';
+            if (isTest && r.active) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(255,193,7,.1);color:var(--yellow)">' + T.updates_repo_caution + '</span>';
+            if (missing) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:var(--surface-solid);color:var(--text3)">' + T.updates_repo_missing + '</span>';
             html += '</div>';
             if (desc) html += '<div style="font-size:.64rem;color:var(--text3)">' + desc + '</div>';
             if (r.url && !missing) html += '<div style="font-family:var(--mono);font-size:.58rem;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + r.url + ' ' + r.suite + '</div>';
@@ -157,7 +188,7 @@ async function loadUpdates() {
         // Other repos (separator)
         const others = repo.other_repos || [];
         if (others.length) {
-            html += '<div style="padding:6px 16px;font-size:.64rem;font-weight:600;color:var(--text3);background:rgba(0,0,0,.1)">Weitere Repositories</div>';
+            html += '<div style="padding:6px 16px;font-size:.64rem;font-weight:600;color:var(--text3);background:rgba(0,0,0,.1)">' + T.updates_repo_other + '</div>';
             others.forEach(r => { r._label = r.components; r._desc = ''; html += repoRow(r, repo.has_subscription); });
         }
         el.innerHTML = html;
@@ -192,36 +223,53 @@ async function loadUpdates() {
 
 async function aptRefresh() {
     const btn = document.getElementById('btnAptRefresh');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner-small"></span> Prüfe...';
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-small"></span> ' + UPD_TEXT.checking;
     try {
         await api('apt-refresh', 'POST');
         await loadUpdates();
     } catch(e) { toast('Fehler: ' + e.message, 'error'); }
-    btn.disabled = false; btn.innerHTML = 'Prüfen';
+    btn.disabled = false; btn.textContent = UPD_TEXT.checkForUpdates;
 }
 
 async function aptUpgrade() {
-    if (!confirm('Alle System-Updates jetzt installieren?')) return;
+    if (!confirm(UPD_TEXT.confirmInstall)) return;
     const btn = document.getElementById('btnAptUpgrade');
     const outEl = document.getElementById('updOutput');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner-small"></span> Installiere...';
-    outEl.style.display = 'block'; outEl.textContent = 'apt dist-upgrade läuft...';
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-small"></span> ' + UPD_TEXT.installing;
+    outEl.style.display = 'block'; outEl.textContent = UPD_TEXT.aptRunning;
     try {
         const res = await api('apt-upgrade', 'POST');
         outEl.textContent = res.output + (res.autoremove ? '\n\nautoremove:\n' + res.autoremove : '');
-        if (res.ok) toast('Updates installiert');
-        else toast('Update fehlgeschlagen', 'error');
+        if (res.ok) toast(UPD_TEXT.updatesInstalled);
+        else toast(UPD_TEXT.systemUpdateFailed, 'error');
         await loadUpdates();
     } catch(e) { toast('Fehler: ' + e.message, 'error'); outEl.textContent = e.message; }
-    btn.disabled = false; btn.innerHTML = 'Alle Updates installieren';
+    btn.disabled = false; btn.textContent = UPD_TEXT.installAllUpdates;
 }
 
-async function appUpdate() {
+async function appUpdate(btnEl) {
+    const btn = btnEl || null;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-small"></span> ' + UPD_TEXT.appUpdating;
+    }
     try {
         const res = await api('update-pull', 'POST');
-        if (res.ok) { toast('Update erfolgreich — Seite wird neu geladen'); setTimeout(() => location.reload(), 1500); }
-        else toast('Update fehlgeschlagen: ' + (res.output || ''), 'error');
-    } catch(e) { toast('Fehler: ' + e.message, 'error'); }
+        if (res.ok) { toast(UPD_TEXT.appReloading); setTimeout(() => location.reload(), 1500); }
+        else {
+            toast(UPD_TEXT.appUpdateFailed + ': ' + (res.output || ''), 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Update';
+            }
+        }
+    } catch(e) {
+        toast('Fehler: ' + e.message, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Update';
+        }
+    }
 }
 
 async function repoToggle(file, enable, component) {
