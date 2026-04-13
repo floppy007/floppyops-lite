@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.13 (2026-04-13)
+
+### Added
+- **Public-access toggles in Security Check**: the Lite app can now switch public reachability for both the Lite web UI and the direct PVE WebUI port `8006` from the Security tab
+
+### Fixed
+- **PVE WebUI public toggle now writes valid firewall rules**: the `8006` toggle creates/removes proper TCP ACCEPT rules and reflects the effective state correctly
+- **Lite app public toggle now edits the live Nginx vhost reliably**: the Security API detects the real Lite site file, inserts/removes the allow/deny block robustly and reloads Nginx after validation
+- **Host scripts now preserve the new access controls**: `setup.sh` and `update.sh` now re-apply the needed sudoers rules for the Security toggles so fresh installs and future updates keep working
+
 ## v1.2.12 (2026-04-13)
 
 ### Fixed

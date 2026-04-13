@@ -78,6 +78,8 @@ async function loadSecScan() {
     const fw = d.firewall;
     const dot = (on) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${on ? 'var(--green)' : 'var(--red)'};margin-right:6px"></span>`;
     const policyBadge = fw.dc_enabled ? `<span style="background:rgba(255,255,255,.06);padding:1px 8px;border-radius:4px;font-size:.6rem;font-family:var(--mono);margin-left:6px">Input: ${fw.dc_policy_in || 'ACCEPT'}</span>` : '';
+    const pvePublic = fw.pve_public_8006 || { enabled: false };
+    const appPublic = fw.lite_app_public || { enabled: false, host: '' };
     document.getElementById('secFwStatus').innerHTML = `
         <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:12px">
@@ -87,6 +89,29 @@ async function loadSecScan() {
             <div style="display:flex;align-items:center;gap:12px">
                 <div>${dot(fw.node_enabled)}${T.sec_node_level} (${fw.node}): <strong>${fw.node_enabled ? T.sec_fw_enabled : T.sec_fw_disabled}</strong></div>
                 ${!fw.node_enabled ? `<button class="btn btn-sm btn-green" onclick="secEnableFw('node')" style="padding:2px 10px;font-size:.6rem">${T.sec_fw_enable}</button>` : ''}
+            </div>
+        </div>`;
+    document.getElementById('secAccessToggles').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+            <div style="background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:12px 14px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div>
+                        <div style="font-size:.78rem;font-weight:600">${T.sec_pve_public_title}</div>
+                        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${T.sec_pve_public_desc}</div>
+                    </div>
+                    <button class="btn btn-sm ${pvePublic.enabled ? '' : 'btn-green'}" onclick="secTogglePvePublic(${pvePublic.enabled ? 0 : 1})">${pvePublic.enabled ? T.sec_public_disable : T.sec_public_enable}</button>
+                </div>
+                <div style="margin-top:10px;font-size:.7rem;color:${pvePublic.enabled ? 'var(--yellow)' : 'var(--text3)'}">${dot(pvePublic.enabled)}${pvePublic.enabled ? T.sec_public_enabled : T.sec_public_disabled}</div>
+            </div>
+            <div style="background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:12px 14px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div>
+                        <div style="font-size:.78rem;font-weight:600">${T.sec_app_public_title}</div>
+                        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${T.sec_app_public_desc}${appPublic.host ? ' (' + appPublic.host + ')' : ''}</div>
+                    </div>
+                    <button class="btn btn-sm ${appPublic.enabled ? '' : 'btn-green'}" onclick="secToggleAppPublic(${appPublic.enabled ? 0 : 1})">${appPublic.enabled ? T.sec_public_disable : T.sec_public_enable}</button>
+                </div>
+                <div style="margin-top:10px;font-size:.7rem;color:${appPublic.enabled ? 'var(--green)' : 'var(--text3)'}">${dot(appPublic.enabled)}${appPublic.enabled ? T.sec_public_enabled : T.sec_public_disabled}</div>
             </div>
         </div>`;
 }
@@ -155,6 +180,20 @@ async function secDeleteRule(pos, level) {
     if (!await appConfirm(T.sec_delete_rule, T.sec_delete_rule_confirm)) return;
     const d = await api('sec-fw-delete-rule', 'POST', { pos, level });
     if (d.ok) loadSecFwRules();
+}
+
+async function secTogglePvePublic(enable) {
+    const msg = enable ? T.sec_pve_public_enable_warn : T.sec_pve_public_disable_warn;
+    if (!await appConfirm(T.sec_pve_public_title, msg, enable ? 'warning' : 'danger')) return;
+    const d = await api('sec-pve-public-toggle', 'POST', { enable: enable ? '1' : '0' });
+    if (d.ok) { loadSecScan(); loadSecFwRules(); }
+}
+
+async function secToggleAppPublic(enable) {
+    const msg = enable ? T.sec_app_public_enable_warn : T.sec_app_public_disable_warn;
+    if (!await appConfirm(T.sec_app_public_title, msg, enable ? 'warning' : 'danger')) return;
+    const d = await api('sec-app-public-toggle', 'POST', { enable: enable ? '1' : '0' });
+    if (d.ok) loadSecScan();
 }
 
 function secApplyDefaults() { openModal('secDefaultsModal'); }

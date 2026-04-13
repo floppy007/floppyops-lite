@@ -169,6 +169,10 @@ install_lxc_route_fix_sudoers() {
 }
 
 install_runtime_sudoers() {
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-available/*"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-enabled/*"
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -L POSTROUTING -n"
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -C POSTROUTING -s * -o * -j MASQUERADE"
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -A POSTROUTING -s * -o * -j MASQUERADE"

@@ -18,6 +18,97 @@
  * @param string $action Der API-Action-Name
  * @return bool true wenn behandelt
  */
+function secIsPublicPveRule(array $rule): bool {
+    if (($rule['action'] ?? '') !== 'ACCEPT' || ($rule['type'] ?? '') !== 'in') {
+        return false;
+    }
+    if (($rule['dport'] ?? '') != '8006') {
+        return false;
+    }
+
+    $source = trim((string)($rule['source'] ?? ''));
+    return $source === '';
+}
+
+function secDeleteFirewallRule(string $path): void {
+    shell_exec("sudo pvesh delete $path 2>&1");
+}
+
+function secFindLitePublicSitePath(): ?string {
+    foreach (glob('/etc/nginx/sites-enabled/*') as $path) {
+        if (!is_file($path)) continue;
+        $content = @file_get_contents($path);
+        if ($content === false) continue;
+        if (!str_contains($content, 'root /var/www/server-admin;')) continue;
+        if (!preg_match('/^\s*server_name\s+(.+);/m', $content, $m)) continue;
+        if (trim($m[1]) === '_') continue;
+
+        $basename = basename($path);
+        $available = '/etc/nginx/sites-available/' . $basename;
+        return is_file($available) ? $available : $path;
+    }
+    return null;
+}
+
+function secReadRootFile(string $path): array {
+    $content = @file_get_contents($path);
+    if ($content !== false) {
+        return ['ok' => true, 'content' => $content];
+    }
+
+    $cat = findExecutable(['/usr/bin/cat', '/bin/cat']);
+    $cmd = buildSudoCommand([$cat ?: '/bin/cat', $path], '2>/dev/null');
+    $content = $cmd !== null ? shell_exec($cmd) : null;
+    if ($content !== null && $content !== '') {
+        return ['ok' => true, 'content' => $content];
+    }
+
+    return ['ok' => false, 'error' => "Konnte Datei nicht lesen: {$path}"];
+}
+
+function secWriteNginxSite(string $path, string $content): array {
+    $tmp = tempnam('/tmp', 'nginx_');
+    if ($tmp === false) {
+        return ['ok' => false, 'error' => 'Temp-Datei konnte nicht erstellt werden'];
+    }
+
+    file_put_contents($tmp, $content);
+    $cp = findExecutable(['/usr/bin/cp', '/bin/cp']) ?: '/usr/bin/cp';
+    $copyCmd = buildSudoCommand([$cp, $tmp, $path], '2>&1');
+    $output = $copyCmd !== null ? (shell_exec($copyCmd) ?? '') : '';
+    @unlink($tmp);
+
+    if (!is_file($path)) {
+        return ['ok' => false, 'error' => "Datei nicht gefunden: {$path}", 'details' => trim($output)];
+    }
+
+    $verify = @file_get_contents($path);
+    if ($verify !== $content) {
+        return ['ok' => false, 'error' => "Datei {$path} wurde nicht korrekt geschrieben", 'details' => trim($output)];
+    }
+
+    return ['ok' => true];
+}
+
+function secNginxReload(): array {
+    $nginx = findExecutable(['/usr/sbin/nginx', '/sbin/nginx']) ?: '/usr/sbin/nginx';
+    $systemctl = findExecutable(['/usr/bin/systemctl', '/bin/systemctl']) ?: '/usr/bin/systemctl';
+
+    $testCmd = buildSudoCommand([$nginx, '-t'], '2>&1');
+    $testOut = $testCmd !== null ? (shell_exec($testCmd) ?? '') : '';
+    if (!str_contains($testOut, 'syntax is ok') || !str_contains($testOut, 'test is successful')) {
+        return ['ok' => false, 'error' => 'nginx -t fehlgeschlagen', 'details' => trim($testOut)];
+    }
+
+    $reloadCmd = buildSudoCommand([$systemctl, 'reload', 'nginx'], '2>&1');
+    $reloadOut = $reloadCmd !== null ? (shell_exec($reloadCmd) ?? '') : '';
+    return ['ok' => true, 'details' => trim($reloadOut)];
+}
+
+function secHasLiteAppWhitelist(string $content): bool {
+    return (bool)preg_match('/^\s*allow\s+.+;\s*$/m', $content) && (bool)preg_match('/^\s*deny\s+all;\s*$/m', $content);
+}
+
 function handleSecurityAPI(string $action): bool {
     // GET: Port-Scan + PVE Firewall-Status (Risikobewertung)
     if ($action === 'sec-scan') {
@@ -81,6 +172,22 @@ function handleSecurityAPI(string $action): bool {
         // PVE Firewall status
         $dcFw = json_decode(shell_exec("sudo pvesh get /cluster/firewall/options --output-format json 2>/dev/null") ?? '{}', true);
         $nodeFw = json_decode(shell_exec("sudo pvesh get /nodes/" . escapeshellarg($node) . "/firewall/options --output-format json 2>/dev/null") ?? '{}', true);
+        $dcRules = json_decode(shell_exec("sudo pvesh get /cluster/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
+        $nodeRules = json_decode(shell_exec("sudo pvesh get /nodes/" . escapeshellarg($node) . "/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
+        $publicDc = array_values(array_filter($dcRules, 'secIsPublicPveRule'));
+        $publicNode = array_values(array_filter($nodeRules, 'secIsPublicPveRule'));
+        $liteSitePath = secFindLitePublicSitePath();
+        $liteAppPublic = true;
+        $liteAppHost = '';
+        if ($liteSitePath !== null) {
+            $site = secReadRootFile($liteSitePath);
+            if ($site['ok']) {
+                $liteAppPublic = !secHasLiteAppWhitelist($site['content']);
+                if (preg_match('/^\s*server_name\s+(.+);/m', $site['content'], $m)) {
+                    $liteAppHost = trim($m[1]);
+                }
+            }
+        }
 
         $riskyCount = count(array_filter($unique, fn($p) => $p['risk']));
         $dcOn = !empty($dcFw['enable']);
@@ -91,7 +198,17 @@ function handleSecurityAPI(string $action): bool {
             'dc_enabled' => $dcOn,
             'node_enabled' => $nodeOn,
             'dc_policy_in' => $dcFw['policy_in'] ?? 'ACCEPT',
-            'node' => $node
+            'node' => $node,
+            'pve_public_8006' => [
+                'enabled' => !empty($publicDc) || !empty($publicNode),
+                'dc_rules' => count($publicDc),
+                'node_rules' => count($publicNode),
+            ],
+            'lite_app_public' => [
+                'enabled' => $liteAppPublic,
+                'host' => $liteAppHost,
+                'path' => $liteSitePath,
+            ],
         ], 'summary' => [
             'total_ports' => count($unique),
             'external_ports' => count(array_filter($unique, fn($p) => $p['external'])),
@@ -107,6 +224,88 @@ function handleSecurityAPI(string $action): bool {
         $nodeRules = json_decode(shell_exec("sudo pvesh get /nodes/" . escapeshellarg($node) . "/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
         $dcRules = json_decode(shell_exec("sudo pvesh get /cluster/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
         echo json_encode(['ok' => true, 'node_rules' => $nodeRules, 'cluster_rules' => $dcRules, 'node' => $node]);
+        return true;
+    }
+
+    // POST: Oeffentlichen Zugriff auf Lite-App umschalten
+    if ($action === 'sec-app-public-toggle' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        csrf_check();
+        $enable = ($_POST['enable'] ?? '') === '1';
+        $sitePath = secFindLitePublicSitePath();
+        if ($sitePath === null) {
+            echo json_encode(['ok' => false, 'error' => 'Lite-Nginx-Site nicht gefunden']);
+            return true;
+        }
+
+        $read = secReadRootFile($sitePath);
+        if (!$read['ok']) {
+            echo json_encode(['ok' => false, 'error' => $read['error']]);
+            return true;
+        }
+
+        $content = $read['content'];
+        $whitelistBlock = "    allow 127.0.0.1;\n    allow 10.10.20.0/24;\n    allow 10.10.10.0/24;\n    deny all;\n\n";
+        $updated = $content;
+        if ($enable) {
+            $updated = preg_replace('/^\s*allow\s+.+;\n(?:^\s*allow\s+.+;\n)*^\s*deny\s+all;\n\n/m', '', $content, 1) ?? $content;
+        } elseif (!secHasLiteAppWhitelist($content)) {
+            $updated = preg_replace('/(^\s*index\s+index\.php;\s*$\n?)/m', "$1\n" . $whitelistBlock, $content, 1) ?? $content;
+        }
+
+        if ($updated !== $content) {
+            $write = secWriteNginxSite($sitePath, $updated);
+            if (!$write['ok']) {
+                echo json_encode(['ok' => false, 'error' => $write['error'], 'details' => $write['details'] ?? '']);
+                return true;
+            }
+            $reload = secNginxReload();
+            if (!$reload['ok']) {
+                echo json_encode(['ok' => false, 'error' => $reload['error'], 'details' => $reload['details'] ?? '']);
+                return true;
+            }
+        }
+
+        echo json_encode(['ok' => true, 'enabled' => $enable]);
+        return true;
+    }
+
+    // POST: Oeffentlichen Zugriff auf PVE WebUI (8006) umschalten
+    if ($action === 'sec-pve-public-toggle' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        csrf_check();
+        $node = trim(shell_exec('hostname -s 2>/dev/null') ?? '');
+        $enable = ($_POST['enable'] ?? '') === '1';
+
+        $dcRules = json_decode(shell_exec("sudo pvesh get /cluster/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
+        $nodeRules = json_decode(shell_exec("sudo pvesh get /nodes/" . escapeshellarg($node) . "/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
+
+        if ($enable) {
+            $hasDc = !empty(array_filter($dcRules, 'secIsPublicPveRule'));
+            $hasNode = !empty(array_filter($nodeRules, 'secIsPublicPveRule'));
+            $comment = escapeshellarg('PVE WebUI public access (FloppyOps Lite)');
+
+            if (!$hasDc) {
+                shell_exec("sudo pvesh create /cluster/firewall/rules --action ACCEPT --type in --proto tcp --dport 8006 --enable 1 --comment $comment 2>&1");
+            }
+            if (!$hasNode) {
+                shell_exec("sudo pvesh create /nodes/" . escapeshellarg($node) . "/firewall/rules --action ACCEPT --type in --proto tcp --dport 8006 --enable 1 --comment $comment 2>&1");
+            }
+        } else {
+            foreach ($dcRules as $rule) {
+                if (secIsPublicPveRule($rule) && isset($rule['pos'])) {
+                    secDeleteFirewallRule("/cluster/firewall/rules/" . (int)$rule['pos']);
+                }
+            }
+            foreach ($nodeRules as $rule) {
+                if (secIsPublicPveRule($rule) && isset($rule['pos'])) {
+                    secDeleteFirewallRule("/nodes/" . escapeshellarg($node) . "/firewall/rules/" . (int)$rule['pos']);
+                }
+            }
+        }
+
+        $dcRulesAfter = json_decode(shell_exec("sudo pvesh get /cluster/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
+        $nodeRulesAfter = json_decode(shell_exec("sudo pvesh get /nodes/" . escapeshellarg($node) . "/firewall/rules --output-format json 2>/dev/null") ?? '[]', true) ?: [];
+        $effective = !empty(array_filter($dcRulesAfter, 'secIsPublicPveRule')) || !empty(array_filter($nodeRulesAfter, 'secIsPublicPveRule'));
+        echo json_encode(['ok' => true, 'enabled' => $effective]);
         return true;
     }
 

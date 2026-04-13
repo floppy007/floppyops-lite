@@ -11,7 +11,7 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.2.12');
+define('APP_VERSION', '1.2.13');
 require_once __DIR__ . '/config.php';
 session_start();
 require_once __DIR__ . '/lang.php';
@@ -1557,6 +1557,14 @@ body::after {
                     <span style="font-size:.78rem;font-weight:600"><?= __('sec_pve_firewall') ?></span>
                 </div>
                 <div id="secFwStatus" style="padding:12px 16px"><?= __('loading') ?></div>
+            </div>
+
+            <div style="background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--radius);margin-bottom:14px;overflow:hidden">
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:8px">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                    <span style="font-size:.78rem;font-weight:600"><?= __('sec_public_access') ?></span>
+                </div>
+                <div id="secAccessToggles" style="padding:12px 16px"><?= __('loading') ?></div>
             </div>
 
             <!-- Firewall Rules -->

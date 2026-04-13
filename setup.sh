@@ -762,6 +762,7 @@ if [[ "$MOD_NGINX" == "true" ]]; then
     echo "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -C POSTROUTING -s * -o * -j MASQUERADE"
     echo "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -A POSTROUTING -s * -o * -j MASQUERADE"
     echo "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-available/*"
+    echo "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-enabled/*"
     echo "www-data ALL=(root) NOPASSWD: /usr/bin/ln -sf /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*"
     echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/nginx/sites-available/*"
     echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/nginx/sites-enabled/*"
