@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.2.11 (2026-04-13)
+
+### Fixed
+- **Fail2ban and NAT checks stop spamming sudo mails**: runtime checks now guard missing tools/modules better and use the matching sudo command paths for Fail2ban and iptables
+- **Repository repair now really switches to community repos**: the in-app repo fix disables enterprise repos and enables the free `pve-no-subscription` and matching Ceph community repos on `trixie`
+- **Update actions no longer fail on empty POST CSRF**: the shared JS API helper now sends `_csrf` for every POST, including actions without a payload body
+- **Manual system updates no longer collapse into HTML/502 responses**: `apt dist-upgrade` now runs as a background job with status polling instead of blocking PHP-FPM until the web request times out
+- **Auto-update schedules can be saved from the web UI again**: cron files are now written through the sudo-backed root file path instead of failing silently as `www-data`
+
+### Improved
+- **Reboot hints show more context**: the updates panel can include package names from `/var/run/reboot-required.pkgs`
+- **Updater keeps runtime sudoers fixes during future app upgrades**: `update.sh` now re-applies the newer sudoers lines for repo writes, cron writes, and NAT checks
+
 ## v1.2.9 (2026-04-12)
 
 ### Fixed

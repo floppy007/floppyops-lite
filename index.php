@@ -11,7 +11,7 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.2.10');
+define('APP_VERSION', '1.2.11');
 require_once __DIR__ . '/config.php';
 session_start();
 require_once __DIR__ . '/lang.php';
@@ -81,6 +81,34 @@ function authenticatePamUser(string $user, string $pass): array {
     }
 
     return ['ok' => false, 'error' => 'Linux-Authentifizierung fehlgeschlagen'];
+}
+
+function findExecutable(array $candidates): ?string {
+    foreach ($candidates as $candidate) {
+        if (is_string($candidate) && $candidate !== '' && is_file($candidate) && is_executable($candidate)) {
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function buildShellCommand(array $argv, string $suffix = ''): string {
+    $command = implode(' ', array_map('escapeshellarg', $argv));
+    if ($suffix !== '') {
+        $command .= ' ' . ltrim($suffix);
+    }
+
+    return $command;
+}
+
+function buildSudoCommand(array $argv, string $suffix = ''): ?string {
+    $sudo = findExecutable(['/usr/bin/sudo', '/bin/sudo']);
+    if ($sudo === null) {
+        return null;
+    }
+
+    return buildShellCommand(array_merge([$sudo, '-n'], $argv), $suffix);
 }
 
 function authenticateUser(string $user, string $pass, string $method): array {
@@ -1838,6 +1866,7 @@ body::after {
                     <div>
                         <div style="font-weight:600;color:var(--yellow)"><?= $lang === 'en' ? 'Reboot required' : 'Neustart erforderlich' ?></div>
                         <div style="font-size:.68rem;color:var(--text3);margin-top:2px"><?= $lang === 'en' ? 'A system update requires a server reboot to take effect.' : 'Ein System-Update erfordert einen Neustart des Servers.' ?></div>
+                        <div id="updRebootPkgs" style="display:none;font-size:.64rem;color:var(--text3);margin-top:4px;font-family:var(--mono)"></div>
                     </div>
                 </div>
             </div>

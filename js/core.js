@@ -80,10 +80,12 @@ function toast(msg, type = 'success') {
 // ── API Helper (fetch-Wrapper mit CSRF) ─────────────
 async function api(endpoint, method = 'GET', data = null) {
     const opts = { method };
-    if (data) {
+    if (method === 'POST') {
         const fd = new FormData();
         fd.append('_csrf', CSRF);
-        Object.entries(data).forEach(([k, v]) => fd.append(k, v));
+        if (data) {
+            Object.entries(data).forEach(([k, v]) => fd.append(k, v));
+        }
         opts.body = fd;
     }
     const res = await fetch('?api=' + endpoint, opts);

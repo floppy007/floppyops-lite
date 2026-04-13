@@ -153,6 +153,25 @@ install_lxc_route_fix_sudoers() {
     fi
 }
 
+install_runtime_sudoers() {
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -L POSTROUTING -n"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -C POSTROUTING -s * -o * -j MASQUERADE"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -A POSTROUTING -s * -o * -j MASQUERADE"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/floppyops-lite_repo_* /etc/apt/sources.list.d/*"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/floppyops-lite_file_* /etc/cron.d/*"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /bin/chmod 0644 /etc/cron.d/floppyops-lite-update"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /bin/chmod 0644 /etc/cron.d/floppyops-lite-app-update"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.d/floppyops-lite-update"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.d/floppyops-lite-app-update"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.daily/floppyops-lite-update"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.daily/floppyops-lite-app-update"
+    if run_root_cmd true 2>/dev/null; then
+        run_root_cmd chmod 440 /etc/sudoers.d/server-admin
+        run_root_cmd visudo -cf /etc/sudoers.d/server-admin >/dev/null
+        ok "Sudoers fuer Runtime-Fixes aktualisiert"
+    fi
+}
+
 set_permissions() {
     find "$INSTALL_DIR" -type d -exec chmod 755 {} + 2>/dev/null || true
     find "$INSTALL_DIR" -type f -exec chmod 644 {} + 2>/dev/null || true
@@ -273,6 +292,7 @@ ok "Dateien vollstaendig synchronisiert"
 info "config.php bleibt unveraendert"
 install_pam_helper
 install_lxc_route_fix_sudoers
+install_runtime_sudoers
 reload_php_fpm
 
 # ── Ergebnis ─────────────────────────────────────────────

@@ -8,7 +8,7 @@ A lightweight, modern web panel installed directly on a PVE host. Built for rent
 
 **[Deutsch](#deutsch)** | **[English](#english)**
 
-Current version: `v1.2.9`
+Current version: `v1.2.11`
 
 ---
 
@@ -26,14 +26,14 @@ When you rent a dedicated server with Proxmox VE, certain tasks require terminal
 
 FloppyOps Lite gives you all of this in a beautiful web interface - directly on your server, no external service needed.
 
-## What's new in v1.2.9?
+## What's new in v1.2.11?
 
-- PAM login on live installs works again: the PHP helper process now uses the correct pipe directions, fixing the `Bad file descriptor` failure during Linux/PAM sign-in
-- The Network tab shows an immediate loading spinner for Nginx instead of appearing stuck while proxy sites are fetched
-- Opening `Network` now loads only the active sub-tab instead of always starting both Nginx and WireGuard work in parallel
-- Hash restore for `#network` stays on the intended default/active sub-tab
-- The Updates area has cleaner busy states, more strings moved into `lang.php`, and fewer repeated inline styles
-- `setup.sh` now validates that `helpers/pam_auth.py` is present in the installed tree
+- Fail2ban and NAT checks no longer trigger sudo password mails on hosts where the related feature is missing or not enabled
+- Proxmox repository fixes now switch cleanly to the free community repos on `trixie`, including the matching Ceph repo
+- Empty POST actions now always include CSRF, fixing the in-app repo switch and similar update actions
+- Long-running `apt dist-upgrade` actions now run as a background job with status polling instead of timing out the web UI
+- System reboot hints can now also show the affected packages from `/var/run/reboot-required.pkgs`
+- `setup.sh` and `update.sh` both carry the new sudoers/runtime rules so future installs and upgrades keep the fixes intact
 
 ## Features
 

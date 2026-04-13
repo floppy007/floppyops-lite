@@ -26,6 +26,127 @@ function runLiteUpdateCommand(string $cmd): array {
     ];
 }
 
+function getAptCodename(): string {
+    $codename = trim(shell_exec('lsb_release -cs 2>/dev/null') ?? '');
+    if ($codename !== '') {
+        return $codename;
+    }
+
+    $osRelease = @file_get_contents('/etc/os-release') ?: '';
+    if (preg_match('/^VERSION_CODENAME=(.+)$/m', $osRelease, $m)) {
+        return trim($m[1], "\"' \t");
+    }
+
+    return 'bookworm';
+}
+
+function writeAptSourceFile(string $path, string $content): array {
+    $cp = findExecutable(['/usr/bin/cp', '/bin/cp']);
+    if ($cp === null) {
+        return ['ok' => false, 'error' => 'cp nicht gefunden'];
+    }
+
+    $tmp = tempnam('/tmp', 'floppyops-lite_repo_');
+    if ($tmp === false) {
+        return ['ok' => false, 'error' => 'Temp-Datei konnte nicht erstellt werden'];
+    }
+
+    file_put_contents($tmp, $content);
+    $cmd = buildSudoCommand([$cp, $tmp, $path], '2>&1');
+    $output = $cmd !== null ? (shell_exec($cmd) ?? '') : '';
+    @unlink($tmp);
+
+    if (!is_file($path)) {
+        return ['ok' => false, 'error' => "Datei konnte nicht geschrieben werden: {$path}", 'output' => trim($output)];
+    }
+
+    return ['ok' => true, 'output' => trim($output)];
+}
+
+function updateRepoEnabledState(string $path, bool $enable): array {
+    if (!is_file($path)) {
+        return ['ok' => false, 'error' => "Datei nicht gefunden: {$path}"];
+    }
+
+    $content = @file_get_contents($path);
+    if ($content === false) {
+        return ['ok' => false, 'error' => "Datei konnte nicht gelesen werden: {$path}"];
+    }
+
+    if (str_ends_with($path, '.sources')) {
+        $content = preg_replace('/^Enabled:\s*(yes|no)\s*\n?/mi', '', $content);
+        $content = "Enabled: " . ($enable ? 'yes' : 'no') . "\n" . trim($content) . "\n";
+    } else {
+        $content = $enable
+            ? preg_replace('/^#\s*/m', '', $content)
+            : preg_replace('/^(?!#)(.+)/m', '# $1', $content);
+    }
+
+    return writeAptSourceFile($path, $content);
+}
+
+function writeRootFile(string $path, string $content, int $mode = 0644): array {
+    $cp = findExecutable(['/usr/bin/cp', '/bin/cp']);
+    $chmod = findExecutable(['/usr/bin/chmod', '/bin/chmod']);
+    if ($cp === null || $chmod === null) {
+        return ['ok' => false, 'error' => 'cp/chmod nicht gefunden'];
+    }
+
+    $tmp = tempnam('/tmp', 'floppyops-lite_file_');
+    if ($tmp === false) {
+        return ['ok' => false, 'error' => 'Temp-Datei konnte nicht erstellt werden'];
+    }
+
+    file_put_contents($tmp, $content);
+    $copyCmd = buildSudoCommand([$cp, $tmp, $path], '2>&1');
+    $copyOut = $copyCmd !== null ? (shell_exec($copyCmd) ?? '') : '';
+    @unlink($tmp);
+    if (!is_file($path)) {
+        return ['ok' => false, 'error' => "Datei konnte nicht geschrieben werden: {$path}", 'output' => trim($copyOut)];
+    }
+
+    $chmodCmd = buildSudoCommand([$chmod, sprintf('%04o', $mode), $path], '2>&1');
+    $chmodOut = $chmodCmd !== null ? (shell_exec($chmodCmd) ?? '') : '';
+
+    return ['ok' => true, 'output' => trim($copyOut . "\n" . $chmodOut)];
+}
+
+function removeRootFile(string $path): void {
+    $rm = findExecutable(['/usr/bin/rm', '/bin/rm']);
+    if ($rm === null || !is_file($path)) {
+        return;
+    }
+    $cmd = buildSudoCommand([$rm, '-f', $path], '2>/dev/null');
+    if ($cmd !== null) {
+        shell_exec($cmd);
+    }
+}
+
+function getAptUpgradePaths(): array {
+    return [
+        'state' => '/tmp/floppyops-lite-apt-upgrade-state.json',
+        'log' => '/tmp/floppyops-lite-apt-upgrade.log',
+        'script' => '/tmp/floppyops-lite-apt-upgrade.sh',
+    ];
+}
+
+function readAptUpgradeState(): array {
+    $paths = getAptUpgradePaths();
+    $state = ['running' => false, 'ok' => null, 'finished' => false, 'output' => '', 'autoremove' => ''];
+    if (is_file($paths['state'])) {
+        $data = json_decode((string)file_get_contents($paths['state']), true);
+        if (is_array($data)) {
+            $state = array_merge($state, $data);
+        }
+    }
+    if (is_file($paths['log'])) {
+        $state['log'] = trim((string)shell_exec('tail -n 120 ' . escapeshellarg($paths['log']) . ' 2>/dev/null'));
+    } else {
+        $state['log'] = '';
+    }
+    return $state;
+}
+
 function handleUpdatesAPI(string $action): bool {
     // GET: Versionsvergleich lokal vs. GitHub
     if ($action === 'update-check') {
@@ -65,7 +186,7 @@ function handleUpdatesAPI(string $action): bool {
 
     // GET: PVE Repository-Status (Enterprise/No-Sub, Subscription)
     if ($action === 'repo-check') {
-        $codename = trim(shell_exec('lsb_release -cs 2>/dev/null') ?? 'bookworm');
+        $codename = getAptCodename();
         $isTrixie = ($codename === 'trixie');
         $hasEnterprise = false;
         $hasNoSub = false;
@@ -172,7 +293,7 @@ function handleUpdatesAPI(string $action): bool {
         $file = trim($_POST['file'] ?? '');
         $component = trim($_POST['component'] ?? ''); // for creating new repos
         $enable = ($_POST['enable'] ?? '') === '1';
-        $codename = trim(shell_exec('lsb_release -cs 2>/dev/null') ?? 'bookworm');
+        $codename = getAptCodename();
         $isTrixie = ($codename === 'trixie');
         $output = [];
 
@@ -183,31 +304,34 @@ function handleUpdatesAPI(string $action): bool {
                 $file = 'pve-' . str_replace('pve-', '', $component) . '.sources';
                 $path = '/etc/apt/sources.list.d/' . $file;
                 $content = "Enabled: yes\nTypes: deb\nURIs: {$url}\nSuites: {$codename}\nComponents: {$component}\nSigned-By: /usr/share/keyrings/proxmox-archive-keyring.gpg\n";
-                file_put_contents($path, $content);
             } else {
                 $file = 'pve-' . str_replace('pve-', '', $component) . '.list';
                 $path = '/etc/apt/sources.list.d/' . $file;
-                file_put_contents($path, "deb {$url} {$codename} {$component}\n");
+                $content = "deb {$url} {$codename} {$component}\n";
+            }
+            $write = writeAptSourceFile($path, $content);
+            if (!$write['ok']) {
+                echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+                return true;
             }
             $output[] = 'Erstellt: ' . $file;
         } elseif ($file && preg_match('/^[a-zA-Z0-9._-]+$/', $file)) {
             $path = '/etc/apt/sources.list.d/' . $file;
-            if (str_ends_with($file, '.sources') && file_exists($path)) {
-                $c = file_get_contents($path);
-                $c = preg_replace('/^Enabled:\s*(yes|no)\s*\n?/mi', '', $c);
-                $c = "Enabled: " . ($enable ? 'yes' : 'no') . "\n" . trim($c) . "\n";
-                file_put_contents($path, $c);
-                $output[] = ($enable ? 'Aktiviert' : 'Deaktiviert') . ': ' . $file;
-            } elseif (str_ends_with($file, '.list') && file_exists($path)) {
-                $c = file_get_contents($path);
-                if ($enable) $c = preg_replace('/^#\s*/m', '', $c);
-                else $c = preg_replace('/^(?!#)(.+)/m', '# $1', $c);
-                file_put_contents($path, $c);
+            if (file_exists($path)) {
+                $write = updateRepoEnabledState($path, $enable);
+                if (!$write['ok']) {
+                    echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+                    return true;
+                }
                 $output[] = ($enable ? 'Aktiviert' : 'Deaktiviert') . ': ' . $file;
             }
         }
 
-        shell_exec('apt-get update -qq 2>&1');
+        $update = runLiteUpdateCommand(buildSudoCommand(['/usr/bin/apt-get', 'update'], '-qq 2>&1') ?? '');
+        if (!$update['ok']) {
+            echo json_encode(['ok' => false, 'error' => 'apt update fehlgeschlagen', 'output' => $update['output']]);
+            return true;
+        }
         $output[] = 'apt update ausgeführt';
         echo json_encode(['ok' => true, 'output' => implode("\n", $output)]);
         return true;
@@ -216,19 +340,76 @@ function handleUpdatesAPI(string $action): bool {
     // POST: No-Subscription Repository hinzufuegen
     if ($action === 'repo-add-nosub' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
-        $codename = trim(shell_exec('lsb_release -cs 2>/dev/null') ?? 'bookworm');
+        $codename = getAptCodename();
         $isTrixie = ($codename === 'trixie');
+        $output = [];
+
+        foreach (glob('/etc/apt/sources.list.d/*.sources') as $path) {
+            $content = @file_get_contents($path) ?: '';
+            if (!str_contains($content, 'pve-enterprise')) {
+                continue;
+            }
+            $write = updateRepoEnabledState($path, false);
+            if (!$write['ok']) {
+                echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+                return true;
+            }
+            $output[] = 'Deaktiviert: ' . basename($path);
+        }
+        foreach (glob('/etc/apt/sources.list.d/*.list') as $path) {
+            $content = @file_get_contents($path) ?: '';
+            if (!preg_match('/^[^#]*pve-enterprise/m', $content)) {
+                continue;
+            }
+            $write = updateRepoEnabledState($path, false);
+            if (!$write['ok']) {
+                echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+                return true;
+            }
+            $output[] = 'Deaktiviert: ' . basename($path);
+        }
+
+        foreach (glob('/etc/apt/sources.list.d/*.sources') as $path) {
+            $content = @file_get_contents($path) ?: '';
+            if (!str_contains($content, 'enterprise.proxmox.com/debian/ceph-')) {
+                continue;
+            }
+            $cephRepo = '';
+            if (preg_match('/^URIs:\s*\S*\/debian\/(ceph-[^\s]+)\s*$/mi', $content, $m)) {
+                $cephRepo = trim($m[1]);
+            }
+            $write = writeAptSourceFile(
+                $path,
+                "Enabled: yes\nTypes: deb\nURIs: http://download.proxmox.com/debian/{$cephRepo}\nSuites: {$codename}\nComponents: no-subscription\nSigned-By: /usr/share/keyrings/proxmox-archive-keyring.gpg\n"
+            );
+            if (!$write['ok']) {
+                echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+                return true;
+            }
+            $output[] = 'Aktiviert: ' . basename($path) . ' (Ceph Community)';
+        }
 
         if ($isTrixie) {
             $src = '/etc/apt/sources.list.d/proxmox.sources';
             $content = "Enabled: yes\nTypes: deb\nURIs: http://download.proxmox.com/debian/pve\nSuites: {$codename}\nComponents: pve-no-subscription\nSigned-By: /usr/share/keyrings/proxmox-archive-keyring.gpg\n";
-            file_put_contents($src, $content);
+            $write = writeAptSourceFile($src, $content);
+            $target = basename($src);
         } else {
-            $f = '/etc/apt/sources.list.d/pve-no-subscription.list';
-            file_put_contents($f, "deb http://download.proxmox.com/debian/pve {$codename} pve-no-subscription\n");
+            $src = '/etc/apt/sources.list.d/pve-no-subscription.list';
+            $write = writeAptSourceFile($src, "deb http://download.proxmox.com/debian/pve {$codename} pve-no-subscription\n");
+            $target = basename($src);
         }
+        if (!$write['ok']) {
+            echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+            return true;
+        }
+        $output[] = 'Aktiviert: ' . $target;
 
-        shell_exec('apt-get update -qq 2>&1');
+        $update = runLiteUpdateCommand(buildSudoCommand(['/usr/bin/apt-get', 'update'], '-qq 2>&1') ?? '');
+        if (!$update['ok']) {
+            echo json_encode(['ok' => false, 'error' => 'apt update fehlgeschlagen', 'output' => $update['output']]);
+            return true;
+        }
         $output[] = 'apt update ausgeführt';
         echo json_encode(['ok' => true, 'output' => implode("\n", $output)]);
         return true;
@@ -246,7 +427,18 @@ function handleUpdatesAPI(string $action): bool {
         }
         $lastCheck = trim(shell_exec('stat -c %Y /var/cache/apt/pkgcache.bin 2>/dev/null') ?? '0');
         $rebootRequired = file_exists('/var/run/reboot-required');
-        echo json_encode(['ok' => true, 'updates' => $updates, 'count' => count($updates), 'last_check' => (int)$lastCheck, 'reboot_required' => $rebootRequired]);
+        $rebootPackages = [];
+        if ($rebootRequired && is_readable('/var/run/reboot-required.pkgs')) {
+            $rebootPackages = array_values(array_filter(array_map('trim', file('/var/run/reboot-required.pkgs', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [])));
+        }
+        echo json_encode([
+            'ok' => true,
+            'updates' => $updates,
+            'count' => count($updates),
+            'last_check' => (int)$lastCheck,
+            'reboot_required' => $rebootRequired,
+            'reboot_packages' => $rebootPackages,
+        ]);
         return true;
     }
 
@@ -262,10 +454,71 @@ function handleUpdatesAPI(string $action): bool {
     // POST: apt dist-upgrade + autoremove ausfuehren
     if ($action === 'apt-upgrade' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
-        $out = shell_exec('sudo DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y 2>&1') ?? '';
-        $ok = str_contains($out, '0 newly installed') || str_contains($out, 'newly installed') || str_contains($out, 'neu installiert');
-        $autoremove = shell_exec('sudo apt-get autoremove -y 2>&1') ?? '';
-        echo json_encode(['ok' => $ok, 'output' => trim(substr($out, -800)), 'autoremove' => trim(substr($autoremove, -200))]);
+        $paths = getAptUpgradePaths();
+        $current = readAptUpgradeState();
+        if (!empty($current['running'])) {
+            echo json_encode(['ok' => true, 'started' => false, 'running' => true, 'output' => 'Update laeuft bereits']);
+            return true;
+        }
+
+        $upgradeCmd = buildSudoCommand(['/usr/bin/apt-get', 'dist-upgrade', '-y'], '>> ' . escapeshellarg($paths['log']) . ' 2>&1');
+        $autoremoveCmd = buildSudoCommand(['/usr/bin/apt-get', 'autoremove', '-y'], '>> ' . escapeshellarg($paths['log']) . ' 2>&1');
+        if ($upgradeCmd === null || $autoremoveCmd === null) {
+            echo json_encode(['ok' => false, 'error' => 'apt-get konnte nicht gestartet werden']);
+            return true;
+        }
+
+        @unlink($paths['log']);
+        file_put_contents($paths['state'], json_encode([
+            'running' => true,
+            'finished' => false,
+            'ok' => null,
+            'output' => 'Update gestartet',
+            'autoremove' => '',
+            'started_at' => time(),
+        ], JSON_UNESCAPED_SLASHES));
+
+        $script = <<<SH
+#!/bin/sh
+STATE_FILE={$paths['state']}
+LOG_FILE={$paths['log']}
+{
+  echo "== apt-get dist-upgrade =="
+  {$upgradeCmd}
+  UPGRADE_RC=\$?
+  echo
+  echo "== apt-get autoremove =="
+  {$autoremoveCmd}
+  AUTOREMOVE_RC=\$?
+  php -r '
+\$upgradeRc = (int)(\$argv[1] ?? 1);
+\$autoremoveRc = (int)(\$argv[2] ?? 1);
+\$logFile = \$argv[3] ?? "";
+\$stateFile = \$argv[4] ?? "";
+\$output = trim((string)@shell_exec("tail -n 80 " . escapeshellarg(\$logFile) . " 2>/dev/null"));
+\$state = [
+  "running" => false,
+  "finished" => true,
+  "ok" => (\$upgradeRc === 0),
+  "output" => \$output,
+  "autoremove" => (\$autoremoveRc === 0 ? "done" : "failed"),
+  "finished_at" => time(),
+];
+file_put_contents(\$stateFile, json_encode(\$state, JSON_UNESCAPED_SLASHES));
+' "\$UPGRADE_RC" "\$AUTOREMOVE_RC" "\$LOG_FILE" "\$STATE_FILE"
+} >/dev/null 2>&1
+SH;
+        file_put_contents($paths['script'], $script . "\n");
+        @chmod($paths['script'], 0700);
+        shell_exec('nohup /bin/sh ' . escapeshellarg($paths['script']) . ' >/dev/null 2>&1 &');
+
+        echo json_encode(['ok' => true, 'started' => true, 'running' => true, 'output' => 'Update gestartet']);
+        return true;
+    }
+
+    if ($action === 'apt-upgrade-status') {
+        $state = readAptUpgradeState();
+        echo json_encode(array_merge(['ok' => true], $state));
         return true;
     }
 
@@ -276,16 +529,19 @@ function handleUpdatesAPI(string $action): bool {
         $day = (int)($_POST['day'] ?? 0);
         $hour = max(0, min(23, (int)($_POST['hour'] ?? 4)));
         $cronFile = '/etc/cron.d/floppyops-lite-app-update';
-        @unlink('/etc/cron.daily/floppyops-lite-app-update'); // remove old format
+        removeRootFile('/etc/cron.daily/floppyops-lite-app-update'); // remove old format
         if ($enabled) {
             $dayField = $day === 0 ? '*' : (string)$day;
             $appDir = escapeshellarg(dirname(__DIR__));
             $cmd = "bash {$appDir}/update.sh --dir {$appDir}";
             $script = "# FloppyOps Lite App Auto-Update\n0 {$hour} * * {$dayField} root {$cmd} > /var/log/floppyops-lite-app-update.log 2>&1\n";
-            file_put_contents($cronFile, $script);
-            chmod($cronFile, 0644);
+            $write = writeRootFile($cronFile, $script, 0644);
+            if (!$write['ok']) {
+                echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+                return true;
+            }
         } else {
-            @unlink($cronFile);
+            removeRootFile($cronFile);
         }
         echo json_encode(['ok' => true, 'enabled' => $enabled, 'day' => $day, 'hour' => $hour]);
         return true;
@@ -317,13 +573,16 @@ function handleUpdatesAPI(string $action): bool {
         if ($enabled) {
             $dayField = $day === 0 ? '*' : (string)$day;
             $script = "# FloppyOps Lite Auto-Update\n0 {$hour} * * {$dayField} root apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -qq && apt-get autoremove -y -qq > /var/log/floppyops-lite-update.log 2>&1\n";
-            file_put_contents($cronFile, $script);
-            chmod($cronFile, 0644);
+            $write = writeRootFile($cronFile, $script, 0644);
+            if (!$write['ok']) {
+                echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+                return true;
+            }
             // Remove old cron.daily file if exists
-            @unlink('/etc/cron.daily/floppyops-lite-update');
+            removeRootFile('/etc/cron.daily/floppyops-lite-update');
         } else {
-            @unlink($cronFile);
-            @unlink('/etc/cron.daily/floppyops-lite-update');
+            removeRootFile($cronFile);
+            removeRootFile('/etc/cron.daily/floppyops-lite-update');
         }
         echo json_encode(['ok' => true, 'enabled' => $enabled, 'day' => $day, 'hour' => $hour]);
         return true;

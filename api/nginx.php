@@ -90,7 +90,16 @@ function nginxSystemWriteFile(string $path, string $newContent, bool $dryRun = f
     return ['ok' => true, 'changed' => true, 'dry_run' => false, 'backup' => $backupPath, 'diff' => $diff, 'details' => trim($output)];
 }
 
-function nginxSystemRun(string $cmd, string $label): array {
+function nginxSystemRun(?string $cmd, string $label): array {
+    if ($cmd === null || $cmd === '') {
+        return [
+            'ok' => false,
+            'label' => $label,
+            'command' => '',
+            'output' => 'Befehl nicht verfuegbar',
+        ];
+    }
+
     $output = shell_exec($cmd . ' 2>&1');
     return [
         'ok' => is_string($output),
@@ -128,6 +137,8 @@ function nginxEnsureNatBridgeRules(string $content, string $bridge, string $subn
 }
 
 function handleNginxAPI(string $action): bool {
+    $iptables = findExecutable(['/usr/sbin/iptables', '/sbin/iptables']);
+
     // GET: System-Checks (IP-Forwarding, NAT, Bridges, Nginx, Certbot)
     if ($action === 'nginx-checks') {
         $checks = [];
@@ -154,7 +165,11 @@ function handleNginxAPI(string $action): bool {
         }
 
         // NAT/Masquerading
-        $natRules = shell_exec('sudo iptables -t nat -L POSTROUTING -n 2>/dev/null') ?? '';
+        $natRules = '';
+        if ($iptables !== null) {
+            $natListCmd = buildSudoCommand([$iptables, '-t', 'nat', '-L', 'POSTROUTING', '-n'], '2>/dev/null');
+            $natRules = $natListCmd !== null ? (shell_exec($natListCmd) ?? '') : '';
+        }
         $hasMasq = str_contains($natRules, 'MASQUERADE');
         $pubIface = trim(shell_exec("ip -4 route show default 2>/dev/null | grep -oP 'dev \\K\\S+'") ?? 'vmbr0');
         $intBridge = '';
@@ -299,7 +314,11 @@ function handleNginxAPI(string $action): bool {
                     return true;
                 }
                 $runtime = $dryRun ? null : nginxSystemRun(
-                    'sudo iptables -t nat -C POSTROUTING -s ' . escapeshellarg($subnet) . ' -o ' . escapeshellarg($iface) . ' -j MASQUERADE || sudo iptables -t nat -A POSTROUTING -s ' . escapeshellarg($subnet) . ' -o ' . escapeshellarg($iface) . ' -j MASQUERADE',
+                    $iptables === null
+                        ? null
+                        : buildSudoCommand([$iptables, '-t', 'nat', '-C', 'POSTROUTING', '-s', $subnet, '-o', $iface, '-j', 'MASQUERADE'], '2>/dev/null')
+                            . ' || ' .
+                            buildSudoCommand([$iptables, '-t', 'nat', '-A', 'POSTROUTING', '-s', $subnet, '-o', $iface, '-j', 'MASQUERADE'], '2>&1'),
                     'iptables-masquerade'
                 );
                 if ($runtime && !$runtime['ok']) {

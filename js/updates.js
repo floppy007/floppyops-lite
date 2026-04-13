@@ -95,8 +95,21 @@ async function loadUpdates() {
         const textEl = document.getElementById('updStatusText');
         const subEl = document.getElementById('updStatusSub');
         const rebootEl = document.getElementById('updRebootBanner');
-        if (sys.reboot_required) rebootEl.style.display = '';
-        else rebootEl.style.display = 'none';
+        const rebootPkgsEl = document.getElementById('updRebootPkgs');
+        if (sys.reboot_required) {
+            rebootEl.style.display = '';
+            if (rebootPkgsEl) {
+                const pkgs = Array.isArray(sys.reboot_packages) ? sys.reboot_packages.filter(Boolean) : [];
+                rebootPkgsEl.textContent = pkgs.length ? 'Pakete: ' + pkgs.join(', ') : '';
+                rebootPkgsEl.style.display = pkgs.length ? '' : 'none';
+            }
+        } else {
+            rebootEl.style.display = 'none';
+            if (rebootPkgsEl) {
+                rebootPkgsEl.textContent = '';
+                rebootPkgsEl.style.display = 'none';
+            }
+        }
         countEl.textContent = sys.count;
         countEl.style.background = sys.count > 0 ? 'rgba(255,89,0,.15)' : 'rgba(40,167,69,.1)';
         countEl.style.color = sys.count > 0 ? 'var(--accent)' : 'var(--green)';
@@ -197,24 +210,28 @@ async function loadUpdates() {
     // App auto-update status
     try {
         const aau = await api('app-auto-update-status');
-        document.getElementById('appAutoUpdateToggle').checked = aau.enabled;
-        document.getElementById('appAutoSchedule').style.opacity = aau.enabled ? '1' : '.4';
-        document.getElementById('appAutoSchedule').style.pointerEvents = aau.enabled ? '' : 'none';
-        if (aau.enabled) {
-            document.getElementById('appAutoDay').value = aau.day;
-            document.getElementById('appAutoHour').value = aau.hour;
+        if (!_appAutoDirty) {
+            document.getElementById('appAutoUpdateToggle').checked = aau.enabled;
+            document.getElementById('appAutoSchedule').style.opacity = aau.enabled ? '1' : '.4';
+            document.getElementById('appAutoSchedule').style.pointerEvents = aau.enabled ? 'auto' : 'none';
+            if (aau.enabled) {
+                document.getElementById('appAutoDay').value = aau.day;
+                document.getElementById('appAutoHour').value = aau.hour;
+            }
         }
     } catch(e) {}
 
     // System auto-update status
     try {
         const au = await api('auto-update-status');
-        document.getElementById('autoUpdateToggle').checked = au.enabled;
-        document.getElementById('autoUpdateSchedule').style.opacity = au.enabled ? '1' : '.4';
-        document.getElementById('autoUpdateSchedule').style.pointerEvents = au.enabled ? '' : 'none';
-        if (au.enabled) {
-            document.getElementById('autoUpdateDay').value = au.day;
-            document.getElementById('autoUpdateHour').value = au.hour;
+        if (!_autoUpdateDirty) {
+            document.getElementById('autoUpdateToggle').checked = au.enabled;
+            document.getElementById('autoUpdateSchedule').style.opacity = au.enabled ? '1' : '.4';
+            document.getElementById('autoUpdateSchedule').style.pointerEvents = au.enabled ? 'auto' : 'none';
+            if (au.enabled) {
+                document.getElementById('autoUpdateDay').value = au.day;
+                document.getElementById('autoUpdateHour').value = au.hour;
+            }
         }
         document.getElementById('autoUpdateTz').textContent = au.timezone || '';
         document.getElementById('autoUpdateStatus').textContent = au.enabled ? (au.day === 0 ? 'täglich' : ['','Mo','Di','Mi','Do','Fr','Sa','So'][au.day]) + ' ' + String(au.hour).padStart(2,'0') + ':00' : '';
@@ -239,12 +256,32 @@ async function aptUpgrade() {
     outEl.style.display = 'block'; outEl.textContent = UPD_TEXT.aptRunning;
     try {
         const res = await api('apt-upgrade', 'POST');
-        outEl.textContent = res.output + (res.autoremove ? '\n\nautoremove:\n' + res.autoremove : '');
-        if (res.ok) toast(UPD_TEXT.updatesInstalled);
-        else toast(UPD_TEXT.systemUpdateFailed, 'error');
-        await loadUpdates();
+        if (!res.ok) {
+            outEl.textContent = res.error || res.output || 'Fehler';
+            toast(UPD_TEXT.systemUpdateFailed, 'error');
+        } else {
+            outEl.textContent = res.output || 'Update gestartet';
+            await monitorAptUpgrade(btn, outEl);
+            return;
+        }
     } catch(e) { toast('Fehler: ' + e.message, 'error'); outEl.textContent = e.message; }
     btn.disabled = false; btn.textContent = UPD_TEXT.installAllUpdates;
+}
+
+async function monitorAptUpgrade(btn, outEl) {
+    for (;;) {
+        await new Promise(r => setTimeout(r, 2000));
+        const res = await api('apt-upgrade-status');
+        outEl.textContent = res.log || res.output || UPD_TEXT.aptRunning;
+        if (!res.running) {
+            if (res.ok) toast(UPD_TEXT.updatesInstalled);
+            else toast(UPD_TEXT.systemUpdateFailed, 'error');
+            await loadUpdates();
+            btn.disabled = false;
+            btn.textContent = UPD_TEXT.installAllUpdates;
+            return;
+        }
+    }
 }
 
 async function appUpdate(btnEl) {
@@ -294,10 +331,12 @@ async function repoAddNoSub() {
 }
 
 let _appAutoTimer = null;
+let _appAutoDirty = false;
 function appAutoUpdateChanged() {
+    _appAutoDirty = true;
     const enabled = document.getElementById('appAutoUpdateToggle').checked;
     document.getElementById('appAutoSchedule').style.opacity = enabled ? '1' : '.4';
-    document.getElementById('appAutoSchedule').style.pointerEvents = enabled ? '' : 'none';
+    document.getElementById('appAutoSchedule').style.pointerEvents = enabled ? 'auto' : 'none';
     clearTimeout(_appAutoTimer);
     _appAutoTimer = setTimeout(() => saveAppAutoUpdate(), 500);
 }
@@ -308,15 +347,20 @@ async function saveAppAutoUpdate() {
     const hour = document.getElementById('appAutoHour').value;
     try {
         const res = await api('app-auto-update-save', 'POST', { enabled: enabled ? '1' : '0', day, hour });
-        if (res.ok) toast(enabled ? 'App Auto-Update gespeichert' : 'App Auto-Update deaktiviert');
+        if (res.ok) {
+            _appAutoDirty = false;
+            toast(enabled ? 'App Auto-Update gespeichert' : 'App Auto-Update deaktiviert');
+        }
     } catch(e) { toast('Fehler: ' + e.message, 'error'); }
 }
 
 let _autoUpdateTimer = null;
+let _autoUpdateDirty = false;
 function autoUpdateChanged() {
+    _autoUpdateDirty = true;
     const enabled = document.getElementById('autoUpdateToggle').checked;
     document.getElementById('autoUpdateSchedule').style.opacity = enabled ? '1' : '.4';
-    document.getElementById('autoUpdateSchedule').style.pointerEvents = enabled ? '' : 'none';
+    document.getElementById('autoUpdateSchedule').style.pointerEvents = enabled ? 'auto' : 'none';
     // Debounce save
     clearTimeout(_autoUpdateTimer);
     _autoUpdateTimer = setTimeout(() => saveAutoUpdate(), 500);
@@ -329,6 +373,7 @@ async function saveAutoUpdate() {
     try {
         const res = await api('auto-update-save', 'POST', { enabled: enabled ? '1' : '0', day, hour });
         if (res.ok) {
+            _autoUpdateDirty = false;
             const dayNames = ['täglich','Mo','Di','Mi','Do','Fr','Sa','So'];
             document.getElementById('autoUpdateStatus').textContent = enabled ? dayNames[res.day] + ' ' + String(res.hour).padStart(2,'0') + ':00' : '';
             toast(enabled ? 'Auto-Update gespeichert' : 'Auto-Update deaktiviert');

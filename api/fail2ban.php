@@ -18,14 +18,25 @@
  * @return bool true wenn behandelt
  */
 function handleFail2banAPI(string $action): bool {
+    $fail2banClient = findExecutable(['/usr/bin/fail2ban-client', '/bin/fail2ban-client']);
+    $systemctl = findExecutable(['/usr/bin/systemctl', '/bin/systemctl']);
+    $tail = findExecutable(['/usr/bin/tail', '/bin/tail']);
+
     // GET: Alle Fail2ban Jails mit Ban-Statistiken
     if ($action === 'f2b-jails') {
-        $raw = shell_exec('sudo fail2ban-client status 2>/dev/null') ?? '';
+        if ($fail2banClient === null) {
+            echo json_encode([]);
+            return true;
+        }
+
+        $statusCmd = buildSudoCommand([$fail2banClient, 'status'], '2>/dev/null');
+        $raw = $statusCmd !== null ? (shell_exec($statusCmd) ?? '') : '';
         preg_match('/Jail list:\s*(.*)$/m', $raw, $m);
         $names = array_filter(array_map('trim', explode(',', $m[1] ?? '')));
         $jails = [];
         foreach ($names as $name) {
-            $st = shell_exec("sudo fail2ban-client status " . escapeshellarg($name) . " 2>/dev/null") ?? '';
+            $jailStatusCmd = buildSudoCommand([$fail2banClient, 'status', $name], '2>/dev/null');
+            $st = $jailStatusCmd !== null ? (shell_exec($jailStatusCmd) ?? '') : '';
             preg_match('/Currently failed:\s*(\d+)/', $st, $cf);
             preg_match('/Total failed:\s*(\d+)/', $st, $tf);
             preg_match('/Currently banned:\s*(\d+)/', $st, $cb);
@@ -52,8 +63,9 @@ function handleFail2banAPI(string $action): bool {
         if (file_exists($log) && is_readable($log)) {
             $lines = array_slice(file($log, FILE_IGNORE_NEW_LINES), -80);
             $lines = array_reverse($lines);
-        } else {
-            $raw = shell_exec("sudo tail -80 " . escapeshellarg($log) . " 2>/dev/null") ?? '';
+        } elseif ($tail !== null) {
+            $tailCmd = buildSudoCommand([$tail, '-80', $log], '2>/dev/null');
+            $raw = $tailCmd !== null ? (shell_exec($tailCmd) ?? '') : '';
             $lines = array_reverse(array_filter(explode("\n", $raw)));
         }
         echo json_encode($lines);
@@ -84,6 +96,11 @@ function handleFail2banAPI(string $action): bool {
     // POST: Config speichern und Fail2ban neustarten
     if ($action === 'f2b-save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
+        if ($systemctl === null) {
+            echo json_encode(['ok' => false, 'error' => 'systemctl nicht gefunden']);
+            return true;
+        }
+
         $file = $_POST['file'] ?? '';
         $content = $_POST['content'] ?? '';
         if (!in_array($file, ['jail.local']) && !preg_match('/^filter\.d\/[\w-]+\.conf$/', $file)) {
@@ -93,8 +110,10 @@ function handleFail2banAPI(string $action): bool {
         $path = "/etc/fail2ban/$file";
         file_put_contents($path, $content);
         // Restart fail2ban
-        $out = shell_exec('sudo systemctl restart fail2ban 2>&1') ?? '';
-        $active = trim(shell_exec('systemctl is-active fail2ban 2>/dev/null') ?? '');
+        $restartCmd = buildSudoCommand([$systemctl, 'restart', 'fail2ban'], '2>&1');
+        $statusCmd = buildSudoCommand([$systemctl, 'is-active', 'fail2ban'], '2>/dev/null');
+        $out = $restartCmd !== null ? (shell_exec($restartCmd) ?? '') : '';
+        $active = $statusCmd !== null ? trim(shell_exec($statusCmd) ?? '') : '';
         echo json_encode(['ok' => $active === 'active', 'status' => $active, 'output' => trim($out)]);
         return true;
     }
@@ -111,13 +130,19 @@ function handleFail2banAPI(string $action): bool {
     // POST: IP aus einem Jail entbannen
     if ($action === 'f2b-unban' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
+        if ($fail2banClient === null) {
+            echo json_encode(['ok' => false, 'error' => 'Fail2ban ist nicht installiert']);
+            return true;
+        }
+
         $jail = $_POST['jail'] ?? '';
         $ip = $_POST['ip'] ?? '';
         if (!preg_match('/^[\w-]+$/', $jail) || !filter_var($ip, FILTER_VALIDATE_IP)) {
             echo json_encode(['ok' => false, 'error' => 'Ungültige Parameter']);
             return true;
         }
-        $out = shell_exec("sudo fail2ban-client set " . escapeshellarg($jail) . " unbanip " . escapeshellarg($ip) . " 2>&1");
+        $unbanCmd = buildSudoCommand([$fail2banClient, 'set', $jail, 'unbanip', $ip], '2>&1');
+        $out = $unbanCmd !== null ? shell_exec($unbanCmd) : '';
         echo json_encode(['ok' => true, 'output' => trim($out ?? '')]);
         return true;
     }

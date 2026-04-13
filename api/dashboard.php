@@ -40,15 +40,26 @@ function handleDashboardAPI(string $action): bool {
         $memUsed = (int)($mm[2] ?? 0);
 
         // Fail2ban summary
-        $f2bRaw = shell_exec('sudo fail2ban-client status 2>/dev/null') ?? '';
-        preg_match('/Jail list:\s*(.*)$/m', $f2bRaw, $jm);
-        $jails = $jm[1] ?? '';
-        $jailList = array_filter(array_map('trim', explode(',', $jails)));
+        $jailList = [];
         $totalBanned = 0;
-        foreach ($jailList as $j) {
-            $jStatus = shell_exec("sudo fail2ban-client status " . escapeshellarg($j) . " 2>/dev/null") ?? '';
-            preg_match('/Currently banned:\s*(\d+)/', $jStatus, $bm);
-            $totalBanned += (int)($bm[1] ?? 0);
+        $fail2banClient = findExecutable(['/usr/bin/fail2ban-client', '/bin/fail2ban-client']);
+        if ($fail2banClient !== null) {
+            $f2bStatusCmd = buildSudoCommand([$fail2banClient, 'status'], '2>/dev/null');
+            if ($f2bStatusCmd !== null) {
+                $f2bRaw = shell_exec($f2bStatusCmd) ?? '';
+                preg_match('/Jail list:\s*(.*)$/m', $f2bRaw, $jm);
+                $jails = $jm[1] ?? '';
+                $jailList = array_filter(array_map('trim', explode(',', $jails)));
+                foreach ($jailList as $j) {
+                    $jStatusCmd = buildSudoCommand([$fail2banClient, 'status', $j], '2>/dev/null');
+                    if ($jStatusCmd === null) {
+                        break;
+                    }
+                    $jStatus = shell_exec($jStatusCmd) ?? '';
+                    preg_match('/Currently banned:\s*(\d+)/', $jStatus, $bm);
+                    $totalBanned += (int)($bm[1] ?? 0);
+                }
+            }
         }
 
         // Nginx sites
