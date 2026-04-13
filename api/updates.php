@@ -19,10 +19,30 @@
  * @return bool true wenn behandelt
  */
 function runLiteUpdateCommand(string $cmd): array {
-    $output = shell_exec($cmd . ' 2>&1');
+    $spec = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $proc = proc_open($cmd, $spec, $pipes);
+    if (!is_resource($proc)) {
+        return [
+            'ok' => false,
+            'output' => 'Updater konnte nicht gestartet werden',
+        ];
+    }
+
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]) ?: '';
+    fclose($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]) ?: '';
+    fclose($pipes[2]);
+    $exitCode = proc_close($proc);
+    $output = trim($stdout . ($stderr !== '' ? ($stdout !== '' ? "\n" : '') . $stderr : ''));
+
     return [
-        'ok' => is_string($output),
-        'output' => trim((string)$output),
+        'ok' => ($exitCode === 0),
+        'output' => $output,
     ];
 }
 
@@ -179,7 +199,11 @@ function handleUpdatesAPI(string $action): bool {
     if ($action === 'update-pull' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         $appDir = dirname(__DIR__);
-        $res = runLiteUpdateCommand('bash ' . escapeshellarg($appDir . '/update.sh') . ' --dir ' . escapeshellarg($appDir));
+        $cmd = 'FLOPPYOPS_LITE_DEFER_PHP_FPM_RELOAD=1 bash '
+            . escapeshellarg($appDir . '/update.sh')
+            . ' --dir '
+            . escapeshellarg($appDir);
+        $res = runLiteUpdateCommand($cmd);
         echo json_encode(['ok' => $res['ok'], 'output' => $res['output']]);
         return true;
     }

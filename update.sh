@@ -61,6 +61,21 @@ reload_php_fpm() {
         return 0
     fi
 
+    if [[ "${FLOPPYOPS_LITE_DEFER_PHP_FPM_RELOAD:-0}" == "1" ]]; then
+        (
+            sleep 1
+            local unit
+            for unit in "${units[@]}"; do
+                if run_root_cmd systemctl reload "$unit" 2>/dev/null; then
+                    continue
+                fi
+                run_root_cmd systemctl restart "$unit" >/dev/null 2>&1 || true
+            done
+        ) >/dev/null 2>&1 &
+        ok "PHP-FPM Reload im Hintergrund geplant"
+        return 0
+    fi
+
     local unit
     for unit in "${units[@]}"; do
         if run_root_cmd systemctl reload "$unit" 2>/dev/null; then
@@ -177,6 +192,7 @@ set_permissions() {
     find "$INSTALL_DIR" -type f -exec chmod 644 {} + 2>/dev/null || true
     chown -R www-data:www-data "$INSTALL_DIR" 2>/dev/null || true
     chmod 755 "$INSTALL_DIR/setup.sh" "$INSTALL_DIR/update.sh" 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR/pve-integration/install.sh" 2>/dev/null || true
     chmod 640 "$INSTALL_DIR/config.php" 2>/dev/null || true
     chown root:www-data "$INSTALL_DIR/config.php" 2>/dev/null || true
     chmod 750 "$INSTALL_DIR/data" 2>/dev/null || true
@@ -246,6 +262,10 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unbekannte Option: $1"; exit 1 ;;
     esac
 done
+
+if ! run_root_cmd true 2>/dev/null; then
+    BACKUP_ROOT="/var/tmp/floppyops-lite-update-backups"
+fi
 
 # ── Pre-Checks ───────────────────────────────────────────
 if [[ ! -f "$INSTALL_DIR/index.php" ]]; then

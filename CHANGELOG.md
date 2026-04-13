@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.12 (2026-04-13)
+
+### Fixed
+- **Web self-update now reports real success/failure**: the updates API now evaluates the updater exit code instead of treating any shell output as success
+- **Web self-update no longer dies on backup path permissions**: non-root update runs now write backups to `/var/tmp/floppyops-lite-update-backups` instead of failing on `/root`
+- **Web self-update no longer breaks on PHP-FPM reload**: app-triggered updates defer the PHP-FPM reload into the background so the HTTP request can finish cleanly instead of returning `502 Bad Gateway`
+- **Updater no longer dirties Git worktrees via file mode drift**: `pve-integration/install.sh` keeps its executable mode during update syncs
+
 ## v1.2.11 (2026-04-13)
 
 ### Fixed
