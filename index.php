@@ -11,7 +11,7 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.2.9');
+define('APP_VERSION', '1.2.10');
 require_once __DIR__ . '/config.php';
 session_start();
 require_once __DIR__ . '/lang.php';
@@ -36,7 +36,18 @@ function authenticatePamUser(string $user, string $pass): array {
         return ['ok' => false, 'error' => 'PAM-Authentifizierung ist nicht eingerichtet'];
     }
 
-    $cmd = ['sudo', '-n', $helper, '--user', $user];
+    $sudo = null;
+    foreach (['/usr/bin/sudo', '/bin/sudo'] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) {
+            $sudo = $candidate;
+            break;
+        }
+    }
+    if ($sudo === null) {
+        return ['ok' => false, 'error' => 'PAM-Authentifizierung ist nicht freigeschaltet (sudo fehlt)'];
+    }
+
+    $cmd = [$sudo, '-n', $helper, '--user', $user];
     $spec = [
         0 => ['pipe', 'r'],
         1 => ['pipe', 'w'],

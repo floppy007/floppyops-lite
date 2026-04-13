@@ -326,6 +326,7 @@ PACKAGES=(
     nginx
     "php${PHP_VERSION}-fpm"
     openssl
+    sudo
     python3-pam
 )
 [[ "$MOD_FAIL2BAN" == "true" ]] && PACKAGES+=(fail2ban)
@@ -508,8 +509,12 @@ VHOST_FILE="/etc/nginx/sites-available/$VHOST_NAME"
 echo ""
 echo -e "  ${BOLD}$(L wl_question)${NC}"
 echo -e "  ${DIM}$(L wl_desc)${NC}"
-# Try to detect caller IP (SSH_CLIENT or who)
-CALLER_IP=$(echo "$SSH_CLIENT" | awk '{print $1}' 2>/dev/null || who -m 2>/dev/null | grep -oP '\(\K[^)]+' || echo "")
+# Try to detect caller IP (SSH_CLIENT, SSH_CONNECTION or who)
+CALLER_IP=$(
+    printf '%s\n' "${SSH_CLIENT:-${SSH_CONNECTION:-}}" | awk '{print $1}' 2>/dev/null \
+    || who -m 2>/dev/null | grep -oP '\(\K[^)]+' \
+    || echo ""
+)
 [[ -n "$CALLER_IP" ]] && echo -e "  ${CYAN}$(L wl_detected): ${BOLD}${CALLER_IP}${NC}"
 echo ""
 echo -e "  $(L wl_prompt) \c"
