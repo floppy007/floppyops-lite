@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.23 (2026-04-15)
+
+### Improved
+- **WireGuard cards now show boot persistence clearly at a glance**: active boot-start state is highlighted directly in the card header with a stronger `BOOT AN` badge and matching status button styling
+- **WireGuard tunnels now support direct autostart toggling from the dashboard**: each tunnel card can enable or disable `wg-quick@...` boot activation without re-importing or recreating the config
+
 ## v1.2.20 (2026-04-15)
 
 ### Fixed

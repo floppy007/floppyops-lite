@@ -277,9 +277,12 @@ function handleWireguardAPI(string $action): bool {
         // Get status — interface exists in dump = running, regardless of systemd
         foreach ($interfaces as $name => &$iface) {
             $sysActive = trim(shell_exec("systemctl is-active wg-quick@$name 2>/dev/null") ?? '');
+            $sysEnabled = trim(shell_exec("systemctl is-enabled wg-quick@$name 2>/dev/null") ?? '');
             // If we got data from wg show, the interface IS running
             $iface['active'] = true;
             $iface['status'] = $sysActive === 'active' ? 'active (systemd)' : 'active (manual)';
+            $iface['enabled'] = $sysEnabled === 'enabled';
+            $iface['boot_status'] = $sysEnabled ?: 'unknown';
         }
         unset($iface);
 
@@ -290,6 +293,7 @@ function handleWireguardAPI(string $action): bool {
 
             if (!isset($interfaces[$name])) {
                 $active = trim(shell_exec("systemctl is-active wg-quick@$name 2>/dev/null") ?? '');
+                $enabled = trim(shell_exec("systemctl is-enabled wg-quick@$name 2>/dev/null") ?? '');
                 $interfaces[$name] = [
                     'name' => $name,
                     'public_key' => null,
@@ -297,6 +301,8 @@ function handleWireguardAPI(string $action): bool {
                     'peers' => [],
                     'active' => $active === 'active',
                     'status' => $active,
+                    'enabled' => $enabled === 'enabled',
+                    'boot_status' => $enabled ?: 'unknown',
                 ];
             }
 
@@ -561,6 +567,27 @@ function handleWireguardAPI(string $action): bool {
         $out = shell_exec("sudo systemctl $cmd wg-quick@$iface 2>&1") ?? '';
         $active = trim(shell_exec("systemctl is-active wg-quick@$iface 2>/dev/null") ?? '');
         echo json_encode(['ok' => true, 'status' => $active, 'output' => trim($out)]);
+        return true;
+    }
+
+    // POST: WireGuard Autostart ein-/ausschalten
+    if ($action === 'wg-autostart' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        csrf_check();
+        $iface = preg_replace('/[^a-zA-Z0-9]/', '', $_POST['iface'] ?? '');
+        $enabled = ($_POST['enabled'] ?? '') === '1';
+        if (!$iface) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiges Interface']);
+            return true;
+        }
+        $cmd = $enabled ? 'enable' : 'disable';
+        $out = shell_exec("sudo systemctl $cmd wg-quick@$iface 2>&1") ?? '';
+        $bootStatus = trim(shell_exec("systemctl is-enabled wg-quick@$iface 2>/dev/null") ?? '');
+        echo json_encode([
+            'ok' => true,
+            'enabled' => $bootStatus === 'enabled',
+            'boot_status' => $bootStatus ?: 'unknown',
+            'output' => trim($out),
+        ]);
         return true;
     }
 

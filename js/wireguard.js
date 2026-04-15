@@ -182,6 +182,9 @@ async function loadWg() {
             const statusTag = iface.active
                 ? '<span class="tag tag-green">AKTIV</span>'
                 : '<span class="tag tag-red">INAKTIV</span>';
+            const bootTag = iface.enabled
+                ? '<span class="tag tag-green" style="box-shadow:0 0 0 1px rgba(46,204,113,.25), 0 0 14px rgba(46,204,113,.18)">BOOT AN</span>'
+                : '<span class="tag tag-muted">BOOT AUS</span>';
 
             let peersHtml = '';
             if (iface.peers.length > 0) {
@@ -270,6 +273,7 @@ async function loadWg() {
                     <div class="jail-header">
                         <div class="jail-name">
                             ${statusTag}
+                            ${bootTag}
                             <span style="font-family:var(--mono);font-size:.95rem">${iface.name}</span>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center">
@@ -300,6 +304,10 @@ async function loadWg() {
                                     Start
                                 </button>
                             `}
+                            <button class="btn btn-sm ${iface.enabled ? 'btn-green' : ''}" onclick="wgSetAutostart('${iface.name}', ${iface.enabled ? 'false' : 'true'})">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V8l5-5h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                ${iface.enabled ? 'Autostart aktiv' : 'Autostart an'}
+                            </button>
                             <button class="btn btn-sm btn-red" onclick="wgDelete('${iface.name}')">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                 ${T.delete_tunnel}
@@ -310,6 +318,7 @@ async function loadWg() {
                         <div><span style="color:var(--text3)">VPN-Netz:</span> <span style="font-family:var(--mono);color:var(--accent)">${subnet || '---'}</span></div>
                         <div><span style="color:var(--text3)">Gateway:</span> <span style="font-family:var(--mono)">${gateway || '---'}</span></div>
                         <div><span style="color:var(--text3)">Port:</span> <span style="font-family:var(--mono)">${iface.listen_port || 'random'}</span></div>
+                        <div><span style="color:var(--text3)">Autostart:</span> <span style="font-family:var(--mono)">${iface.boot_status || 'unknown'}</span></div>
                         <div><span style="color:var(--text3)">Public Key:</span> <span style="font-family:var(--mono);font-size:.62rem;cursor:pointer;color:var(--text3)" title="${iface.public_key || ''}" onclick="navigator.clipboard.writeText('${iface.public_key || ''}');toast('Key kopiert!')">${pubShort}</span></div>
                         <div><span style="color:var(--text3)">Peers:</span> <span style="font-family:var(--mono)">${iface.peers.length}</span></div>
                     </div>
@@ -614,6 +623,21 @@ async function wgControl(iface, cmd) {
             setTimeout(loadWg, 1000);
         } else {
             toast(res.error || res.output || 'Fehler', 'error');
+        }
+    } catch (e) { toast('Fehler: ' + e.message, 'error'); }
+}
+
+async function wgSetAutostart(iface, enabled) {
+    try {
+        const res = await api('wg-autostart', 'POST', {
+            iface,
+            enabled: enabled ? '1' : '0',
+        });
+        if (res.ok) {
+            toast(iface + ' → Autostart ' + (res.enabled ? 'aktiv' : 'deaktiviert'));
+            setTimeout(loadWg, 300);
+        } else {
+            toast(res.error || 'Autostart konnte nicht geändert werden', 'error');
         }
     } catch (e) { toast('Fehler: ' + e.message, 'error'); }
 }
