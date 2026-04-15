@@ -169,6 +169,10 @@ install_lxc_route_fix_sudoers() {
 }
 
 install_runtime_sudoers() {
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/wgconf_* /etc/wireguard/*"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /bin/chmod 0640 /etc/wireguard/*"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/chown root\\:www-data /etc/wireguard/*"
+    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/wireguard/*"
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t"
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx"
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-available/*"

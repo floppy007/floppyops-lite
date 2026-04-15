@@ -199,10 +199,8 @@ function handleUpdatesAPI(string $action): bool {
     if ($action === 'update-pull' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         $appDir = dirname(__DIR__);
-        $cmd = 'FLOPPYOPS_LITE_DEFER_PHP_FPM_RELOAD=1 bash '
-            . escapeshellarg($appDir . '/update.sh')
-            . ' --dir '
-            . escapeshellarg($appDir);
+        $cmd = 'FLOPPYOPS_LITE_DEFER_PHP_FPM_RELOAD=1 '
+            . buildShellCommand(['/bin/bash', $appDir . '/update.sh', '--dir', $appDir]);
         $res = runLiteUpdateCommand($cmd);
         echo json_encode(['ok' => $res['ok'], 'output' => $res['output']]);
         return true;
@@ -556,8 +554,8 @@ SH;
         removeRootFile('/etc/cron.daily/floppyops-lite-app-update'); // remove old format
         if ($enabled) {
             $dayField = $day === 0 ? '*' : (string)$day;
-            $appDir = escapeshellarg(dirname(__DIR__));
-            $cmd = "bash {$appDir}/update.sh --dir {$appDir}";
+            $appDir = dirname(__DIR__);
+            $cmd = buildShellCommand(['/bin/bash', $appDir . '/update.sh', '--dir', $appDir]);
             $script = "# FloppyOps Lite App Auto-Update\n0 {$hour} * * {$dayField} root {$cmd} > /var/log/floppyops-lite-app-update.log 2>&1\n";
             $write = writeRootFile($cronFile, $script, 0644);
             if (!$write['ok']) {

@@ -242,11 +242,11 @@ async function loadWg() {
                             <button class="btn btn-sm" onclick="wgEditPeerOpen('${iface.name}','${p.public_key}')" title="Peer bearbeiten" style="padding:2px 6px">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
-                            <button class="btn btn-sm" onclick="wgDownloadConf('${iface.name}')" title=".conf" style="padding:2px 6px;font-size:.55rem">
+                            <button class="btn btn-sm" onclick="wgDownloadConf('${iface.name}','${p.public_key}')" title=".conf" style="padding:2px 6px;font-size:.55rem">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 .conf
                             </button>
-                            <button class="btn btn-sm" onclick="wgDownloadPeerScript('${iface.name}')" title=".sh" style="padding:2px 6px;font-size:.55rem">
+                            <button class="btn btn-sm" onclick="wgDownloadPeerScript('${iface.name}','${p.public_key}')" title=".sh" style="padding:2px 6px;font-size:.55rem">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 .sh
                             </button>
@@ -300,6 +300,10 @@ async function loadWg() {
                                     Start
                                 </button>
                             `}
+                            <button class="btn btn-sm btn-red" onclick="wgDelete('${iface.name}')">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                ${T.delete_tunnel}
+                            </button>
                         </div>
                     </div>
                     <div style="display:flex;gap:20px;padding:8px 20px;background:rgba(0,0,0,.15);border-bottom:1px solid var(--border-subtle);font-size:.7rem;flex-wrap:wrap">
@@ -1018,6 +1022,7 @@ async function wgImportOpen() {
     let n = 0;
     while (existing.includes('wg' + n)) n++;
     document.getElementById('wgImportIface').value = 'wg' + n;
+    document.getElementById('wgImportPeerName').value = '';
     document.getElementById('wgImportContent').value = '';
     document.getElementById('wgImportAutoStart').checked = true;
     document.getElementById('wgImportAddFw').checked = false;
@@ -1030,9 +1035,6 @@ function wgImportFileLoad(input) {
     const reader = new FileReader();
     reader.onload = (e) => {
         document.getElementById('wgImportContent').value = e.target.result;
-        // Auto-set interface name from filename
-        const name = file.name.replace(/\.conf$/i, '').replace(/[^a-zA-Z0-9]/g, '');
-        if (name) document.getElementById('wgImportIface').value = name;
         // Auto-check firewall if ListenPort found
         if (/ListenPort\s*=\s*\d+/.test(e.target.result)) {
             document.getElementById('wgImportAddFw').checked = true;
@@ -1043,6 +1045,7 @@ function wgImportFileLoad(input) {
 
 async function wgImportSave() {
     const iface = document.getElementById('wgImportIface').value.trim();
+    const peerName = document.getElementById('wgImportPeerName').value.trim();
     const content = document.getElementById('wgImportContent').value.trim();
     const autoStart = document.getElementById('wgImportAutoStart').checked;
     const addFw = document.getElementById('wgImportAddFw').checked;
@@ -1055,15 +1058,20 @@ async function wgImportSave() {
     try {
         const res = await api('wg-import', 'POST', {
             iface,
+            peer_name: peerName,
             content,
             auto_start: autoStart ? '1' : '0',
             add_firewall: addFw ? '1' : '0',
         });
         if (res.ok) {
             let msg = 'Config ' + iface + ' importiert';
+            if (peerName) msg += ' (' + peerName + ')';
             if (res.started) msg += ' + gestartet';
             if (res.fw_added) msg += ' + Firewall';
             toast(msg);
+            if (Array.isArray(res.warnings)) {
+                res.warnings.filter(Boolean).forEach(w => toast(w, 'error'));
+            }
             closeModal('wgImportModal');
             loadWg();
             if (!res.started) {
@@ -1087,6 +1095,72 @@ function wgDownloadFile(filename, content) {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(a.href);
+}
+
+function wgParsePeerBlock(config, pubkey) {
+    const blocks = config.split(/(?=\[Peer\])/i);
+    return blocks.find(b => /\[Peer\]/i.test(b) && b.includes(pubkey)) || '';
+}
+
+function wgParsePeerExportMeta(block) {
+    const readComment = (label) => {
+        const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = block.match(new RegExp('^#\\s*FloppyOps-' + escaped + ':\\s*(.+)$', 'm'));
+        return match ? match[1].trim() : '';
+    };
+    const readSetting = (key) => {
+        const match = block.match(new RegExp(key + '\\s*=\\s*(.+)'));
+        return match ? match[1].trim() : '';
+    };
+    const nameMatch = block.match(/^#\s*(?!FloppyOps-)(.+)$/m);
+
+    return {
+        name: nameMatch ? nameMatch[1].trim() : '',
+        privateKey: readComment('ClientPrivateKey'),
+        address: readComment('ClientAddress'),
+        dns: readComment('ClientDNS'),
+        allowedIps: readComment('ClientAllowedIPs'),
+        endpoint: readComment('ClientEndpoint'),
+        psk: readSetting('PresharedKey'),
+        keepalive: readSetting('PersistentKeepalive') || '25',
+    };
+}
+
+async function wgBuildPeerExport(iface, pubkey) {
+    const [confRes, infoRes] = await Promise.all([
+        api('wg-config&iface=' + iface),
+        api('wg-server-info&iface=' + iface),
+    ]);
+    if (!confRes.ok) throw new Error(confRes.error || 'Config nicht gefunden');
+    if (!infoRes.ok) throw new Error(infoRes.error || 'Server-Info nicht gefunden');
+
+    const block = wgParsePeerBlock(confRes.config, pubkey);
+    if (!block) throw new Error('Peer-Block nicht gefunden');
+
+    const meta = wgParsePeerExportMeta(block);
+    if (!meta.privateKey) {
+        throw new Error('Dieser Peer wurde ohne exportierbare Private-Key-Metadaten angelegt. Nur neu ab jetzt angelegte Peers lassen sich spaeter direkt exportieren.');
+    }
+
+    let peerConf = '[Interface]\n';
+    if (meta.name) peerConf += '# ' + meta.name + '\n';
+    peerConf += 'PrivateKey = ' + meta.privateKey + '\n';
+    if (meta.address) peerConf += 'Address = ' + meta.address + '\n';
+    const allowed = meta.allowedIps || '';
+    if (meta.dns) peerConf += 'DNS = ' + meta.dns + '\n';
+    peerConf += '\n[Peer]\n';
+    peerConf += 'PublicKey = ' + (infoRes.public_key || '') + '\n';
+    if (meta.psk) peerConf += 'PresharedKey = ' + meta.psk + '\n';
+    if (meta.endpoint) peerConf += 'Endpoint = ' + meta.endpoint + '\n';
+    if (allowed) peerConf += 'AllowedIPs = ' + allowed + '\n';
+    if (meta.keepalive) peerConf += 'PersistentKeepalive = ' + meta.keepalive + '\n';
+
+    return {
+        iface,
+        peerConf,
+        peerName: meta.name,
+        endpoint: meta.endpoint,
+    };
 }
 
 function wgDownloadRemoteScript(iface) {
@@ -1212,7 +1286,31 @@ async function wgEditPeerSave() {
     }
 }
 
-async function wgDownloadPeerScript(iface) {
+async function wgDownloadPeerScript(iface, pubkey = '') {
+    if (pubkey) {
+        try {
+            const exportData = await wgBuildPeerExport(iface, pubkey);
+            const conf = exportData.peerConf;
+            let s = '#!/bin/bash\n';
+            s += '# WireGuard Peer Setup — Generated by FloppyOps Lite\n';
+            if (exportData.peerName) s += '# Peer: ' + exportData.peerName + '\n';
+            s += 'set -e\n';
+            s += 'IFACE="' + iface + '"\n';
+            s += 'CONF="/etc/wireguard/${IFACE}.conf"\n\n';
+            s += 'if [ "$(id -u)" -ne 0 ]; then echo "Bitte als root ausfuehren!"; exit 1; fi\n\n';
+            s += 'cat > "$CONF" << \'WGEOF\'\n';
+            s += conf + '\n';
+            s += 'WGEOF\n\n';
+            s += 'chmod 600 "$CONF"\n';
+            s += 'systemctl enable "wg-quick@${IFACE}"\n';
+            s += 'systemctl start "wg-quick@${IFACE}"\n\n';
+            s += 'wg show "${IFACE}"\n';
+            wgDownloadFile('wg-peer-' + iface + '.sh', s);
+        } catch (e) {
+            toast(e.message || 'Peer-Export fehlgeschlagen', 'error');
+        }
+        return;
+    }
     try {
         const res = await api('wg-config&iface=' + iface);
         if (!res.ok) { toast(res.error || 'Config nicht gefunden', 'error'); return; }
@@ -1255,7 +1353,16 @@ async function wgDownloadPeerScript(iface) {
     } catch (e) { toast('Fehler: ' + e.message, 'error'); }
 }
 
-async function wgDownloadConf(iface) {
+async function wgDownloadConf(iface, pubkey = '') {
+    if (pubkey) {
+        try {
+            const exportData = await wgBuildPeerExport(iface, pubkey);
+            wgDownloadFile(iface + '-peer.conf', exportData.peerConf);
+        } catch (e) {
+            toast(e.message || 'Peer-Export fehlgeschlagen', 'error');
+        }
+        return;
+    }
     try {
         const res = await api('wg-config&iface=' + iface);
         if (res.ok) {
@@ -1506,6 +1613,11 @@ async function wgAddPeerCreate() {
             allowed_ips: d._serverAllowedIps,
             psk: d.psk,
             keepalive: d.keepalive,
+            client_private_key: d.peerPrivKey,
+            client_address: d.peerIp,
+            client_dns: d.peerDns,
+            client_allowed_ips: d.peerRoutes,
+            client_endpoint: d.peerEndpoint,
         });
 
         if (res.ok) {
@@ -1534,4 +1646,19 @@ async function wgRemovePeer(iface, pubkey) {
             toast(res.error || 'Fehler', 'error');
         }
     } catch (e) { toast('Fehler: ' + e.message, 'error'); }
+}
+
+async function wgDelete(iface) {
+    if (!confirm((T.confirm_delete_tunnel || 'Dieses WireGuard-Netz wirklich löschen?') + '\n\n' + iface)) return;
+    try {
+        const res = await api('wg-delete', 'POST', { iface });
+        if (res.ok) {
+            toast((T.tunnel_deleted || 'WireGuard-Netz gelöscht') + ': ' + iface);
+            loadWg();
+        } else {
+            toast(res.error || 'Fehler', 'error');
+        }
+    } catch (e) {
+        toast('Fehler: ' + e.message, 'error');
+    }
 }

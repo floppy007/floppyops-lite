@@ -11,7 +11,7 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.2.13');
+define('APP_VERSION', '1.2.20');
 require_once __DIR__ . '/config.php';
 session_start();
 require_once __DIR__ . '/lang.php';
@@ -908,7 +908,9 @@ body::after {
     width: 100%;
     max-width: 700px;
     max-height: 85vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     animation: modalIn .25s ease;
 }
 
@@ -941,13 +943,19 @@ body::after {
 }
 .modal-close:hover { color: var(--red); border-color: var(--red); }
 
-.modal-body { padding: 24px; }
+.modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    min-height: 0;
+}
 .modal-foot {
     padding: 16px 24px;
     border-top: 1px solid var(--border-subtle);
     display: flex;
     gap: 8px;
     justify-content: flex-end;
+    flex-shrink: 0;
+    background: var(--surface-solid);
 }
 
 /* ── Log Viewer ─────────────────────────────────────── */
@@ -2751,6 +2759,10 @@ foreach ($defaultRules as $i => $r):
                 <div class="form-group">
                     <label class="form-label"><?= $lang === 'de' ? 'Interface-Name' : 'Interface name' ?></label>
                     <input class="form-input" id="wgImportIface" placeholder="wg0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label"><?= $lang === 'de' ? 'Peer-Name' : 'Peer name' ?></label>
+                    <input class="form-input" id="wgImportPeerName" placeholder="<?= $lang === 'de' ? 'z.B. Laptop, Handy, Evidia' : 'e.g. Laptop, Phone, Evidia' ?>">
                 </div>
                 <div class="form-group" style="display:flex;align-items:flex-end">
                     <label class="btn btn-sm" style="cursor:pointer;margin-bottom:0">

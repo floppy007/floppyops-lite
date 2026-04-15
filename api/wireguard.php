@@ -16,19 +16,98 @@
  * @param string $content Neuer Config-Inhalt
  * @return bool true wenn erfolgreich
  */
-function wgWriteConf(string $path, string $content): bool {
-    // Try direct write first, fallback to sudo tee
-    $ok = @file_put_contents($path, $content);
-    if ($ok === false) {
-        $tmp = tempnam('/tmp', 'wgconf_');
-        file_put_contents($tmp, $content);
-        shell_exec("sudo cp " . escapeshellarg($tmp) . " " . escapeshellarg($path) . " 2>&1");
-        shell_exec("sudo chmod 660 " . escapeshellarg($path) . " 2>&1");
-        shell_exec("sudo chown root:www-data " . escapeshellarg($path) . " 2>&1");
-        unlink($tmp);
-        $ok = file_exists($path) && file_get_contents($path) === $content;
+function wgWriteConf(string $path, string $content): array {
+    $written = @file_put_contents($path, $content);
+    if ($written !== false) {
+        return ['ok' => true, 'output' => ''];
     }
-    return (bool)$ok;
+
+    $tmp = tempnam('/tmp', 'wgconf_');
+    if ($tmp === false || @file_put_contents($tmp, $content) === false) {
+        return ['ok' => false, 'error' => 'Temporäre WireGuard-Datei konnte nicht erstellt werden', 'output' => ''];
+    }
+
+    $output = '';
+    $copyCmd = buildSudoCommand(['/usr/bin/cp', $tmp, $path], '2>&1');
+    $chmodCmd = buildSudoCommand(['/bin/chmod', '0640', $path], '2>&1');
+    $chownCmd = buildSudoCommand(['/usr/bin/chown', 'root:www-data', $path], '2>&1');
+
+    if ($copyCmd === null || $chmodCmd === null || $chownCmd === null) {
+        @unlink($tmp);
+        return ['ok' => false, 'error' => 'sudo ist für WireGuard-Schreibzugriff nicht verfügbar', 'output' => ''];
+    }
+
+    $output .= trim((string)(shell_exec($copyCmd) ?? ''));
+    $chmodOut = trim((string)(shell_exec($chmodCmd) ?? ''));
+    $chownOut = trim((string)(shell_exec($chownCmd) ?? ''));
+    @unlink($tmp);
+
+    $combinedOutput = trim(implode("\n", array_filter([$output, $chmodOut, $chownOut], static fn($v) => $v !== '')));
+    $ok = is_file($path) && ((string)@file_get_contents($path) === $content);
+
+    if (!$ok) {
+        return [
+            'ok' => false,
+            'error' => 'WireGuard-Konfiguration konnte nicht gespeichert werden',
+            'output' => $combinedOutput,
+        ];
+    }
+
+    return ['ok' => true, 'output' => $combinedOutput];
+}
+
+function wgBuildPeerMetaLines(array $meta): string {
+    $lines = '';
+    $map = [
+        'private_key' => 'ClientPrivateKey',
+        'address' => 'ClientAddress',
+        'dns' => 'ClientDNS',
+        'allowed_ips' => 'ClientAllowedIPs',
+        'endpoint' => 'ClientEndpoint',
+    ];
+    foreach ($map as $key => $label) {
+        $value = trim((string)($meta[$key] ?? ''));
+        if ($value === '') continue;
+        $lines .= "# FloppyOps-$label: $value\n";
+    }
+    return $lines;
+}
+
+function wgRemoveConf(string $path): void {
+    if (!is_file($path)) {
+        return;
+    }
+
+    if (@unlink($path)) {
+        return;
+    }
+
+    $rmCmd = buildSudoCommand(['/usr/bin/rm', '-f', $path], '2>/dev/null');
+    if ($rmCmd !== null) {
+        shell_exec($rmCmd);
+    }
+}
+
+function wgPrepareImportedConfig(string $content, string $peerName = ''): array {
+    $prepared = trim($content);
+    $warnings = [];
+
+    if ($peerName !== '' && preg_match('/^\[Interface\]\s*$/mi', $prepared)) {
+        $prepared = preg_replace('/^\[Interface\]\s*$/mi', "[Interface]\n# " . $peerName, $prepared, 1) ?? $prepared;
+        $prepared = preg_replace('/^\[Peer\]\s*$/mi', "[Peer]\n# " . $peerName, $prepared, 1) ?? $prepared;
+    }
+
+    $hasDns = preg_match('/^DNS\s*=\s*.+$/mi', $prepared) === 1;
+    $hasResolvconf = findExecutable(['/usr/bin/resolvconf', '/bin/resolvconf']) !== null;
+    if ($hasDns && !$hasResolvconf) {
+        $prepared = preg_replace('/^DNS\s*=.*$/mi', '# DNS entfernt beim Import: resolvconf nicht vorhanden', $prepared) ?? $prepared;
+        $warnings[] = 'DNS-Zeile beim Import deaktiviert: resolvconf ist auf diesem Host nicht installiert';
+    }
+
+    return [
+        'content' => rtrim($prepared) . "\n",
+        'warnings' => $warnings,
+    ];
 }
 
 function wgParseRouteNetworks(string $raw): array
@@ -318,8 +397,12 @@ function handleWireguardAPI(string $action): bool {
             return true;
         }
         $path = "/etc/wireguard/$iface.conf";
-        wgWriteConf($path, $content);
-        echo json_encode(['ok' => true]);
+        $write = wgWriteConf($path, $content);
+        if (!$write['ok']) {
+            echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+            return true;
+        }
+        echo json_encode(['ok' => true, 'output' => $write['output'] ?? '']);
         return true;
     }
 
@@ -400,13 +483,27 @@ function handleWireguardAPI(string $action): bool {
         if ($peerAllowedIps) $conf .= "AllowedIPs = $peerAllowedIps\n";
         if ($keepalive > 0) $conf .= "PersistentKeepalive = $keepalive\n";
 
-        wgWriteConf($path, $conf);
+        $write = wgWriteConf($path, $conf);
+        if (!$write['ok']) {
+            echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+            return true;
+        }
 
         $started = false;
+        $startOutput = '';
         if ($autoStart) {
-            shell_exec("sudo systemctl enable wg-quick@$iface 2>&1");
-            shell_exec("sudo systemctl start wg-quick@$iface 2>&1");
+            $startOutput = trim((string)(shell_exec("sudo systemctl enable wg-quick@$iface 2>&1") ?? ''));
+            $startOut2 = trim((string)(shell_exec("sudo systemctl start wg-quick@$iface 2>&1") ?? ''));
+            $startOutput = trim(implode("\n", array_filter([$startOutput, $startOut2], static fn($v) => $v !== '')));
             $started = trim(shell_exec("systemctl is-active wg-quick@$iface 2>/dev/null") ?? '') === 'active';
+            if (!$started) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => "Interface $iface wurde gespeichert, konnte aber nicht gestartet werden",
+                    'output' => $startOutput,
+                ]);
+                return true;
+            }
         }
 
         // Firewall: Port in PVE Firewall eintragen wenn gewuenscht
@@ -424,7 +521,13 @@ function handleWireguardAPI(string $action): bool {
             }
         }
 
-        echo json_encode(['ok' => true, 'interface' => $iface, 'started' => $started, 'fw_added' => $fwAdded]);
+        echo json_encode([
+            'ok' => true,
+            'interface' => $iface,
+            'started' => $started,
+            'fw_added' => $fwAdded,
+            'output' => trim(implode("\n", array_filter([$write['output'] ?? '', $startOutput], static fn($v) => $v !== ''))),
+        ]);
         return true;
     }
 
@@ -437,7 +540,11 @@ function handleWireguardAPI(string $action): bool {
         shell_exec("sudo systemctl stop wg-quick@$iface 2>&1");
         shell_exec("sudo systemctl disable wg-quick@$iface 2>&1");
         $path = "/etc/wireguard/$iface.conf";
-        if (file_exists($path)) unlink($path);
+        wgRemoveConf($path);
+        if (file_exists($path)) {
+            echo json_encode(['ok' => false, 'error' => "Config $iface.conf konnte nicht gelöscht werden"]);
+            return true;
+        }
         echo json_encode(['ok' => true]);
         return true;
     }
@@ -462,6 +569,7 @@ function handleWireguardAPI(string $action): bool {
         csrf_check();
         $iface = preg_replace('/[^a-zA-Z0-9]/', '', $_POST['iface'] ?? '');
         $content = trim($_POST['content'] ?? '');
+        $peerName = trim(preg_replace('/[^\w\s\-\.\(\)]/', '', $_POST['peer_name'] ?? ''));
         $autoStart = ($_POST['auto_start'] ?? '') === '1';
         $addFw = ($_POST['add_firewall'] ?? '') === '1';
 
@@ -482,18 +590,33 @@ function handleWireguardAPI(string $action): bool {
             return true;
         }
 
-        wgWriteConf($path, $content . "\n");
+        $prepared = wgPrepareImportedConfig($content, $peerName);
+        $write = wgWriteConf($path, $prepared['content']);
+        if (!$write['ok']) {
+            echo json_encode(['ok' => false, 'error' => $write['error'], 'output' => $write['output'] ?? '']);
+            return true;
+        }
 
         $started = false;
+        $startOutput = '';
         if ($autoStart) {
-            shell_exec("sudo systemctl enable wg-quick@$iface 2>&1");
-            shell_exec("sudo systemctl start wg-quick@$iface 2>&1");
+            $startOutput = trim((string)(shell_exec("sudo systemctl enable wg-quick@$iface 2>&1") ?? ''));
+            $startOut2 = trim((string)(shell_exec("sudo systemctl start wg-quick@$iface 2>&1") ?? ''));
+            $startOutput = trim(implode("\n", array_filter([$startOutput, $startOut2], static fn($v) => $v !== '')));
             $started = trim(shell_exec("systemctl is-active wg-quick@$iface 2>/dev/null") ?? '') === 'active';
+            if (!$started) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => "Interface $iface wurde importiert, konnte aber nicht gestartet werden",
+                    'output' => $startOutput,
+                ]);
+                return true;
+            }
         }
 
         // Firewall: extract ListenPort from config
         $fwAdded = false;
-        if ($addFw && preg_match('/ListenPort\s*=\s*(\d+)/', $content, $pm)) {
+        if ($addFw && preg_match('/ListenPort\s*=\s*(\d+)/', $prepared['content'], $pm)) {
             $port = (int)$pm[1];
             if ($port > 0) {
                 $node = trim(shell_exec('hostname -s 2>/dev/null') ?? '');
@@ -508,7 +631,14 @@ function handleWireguardAPI(string $action): bool {
             }
         }
 
-        echo json_encode(['ok' => true, 'interface' => $iface, 'started' => $started, 'fw_added' => $fwAdded]);
+        echo json_encode([
+            'ok' => true,
+            'interface' => $iface,
+            'started' => $started,
+            'fw_added' => $fwAdded,
+            'warnings' => $prepared['warnings'],
+            'output' => trim(implode("\n", array_filter([$write['output'] ?? '', $startOutput], static fn($v) => $v !== ''))),
+        ]);
         return true;
     }
 
@@ -672,6 +802,11 @@ function handleWireguardAPI(string $action): bool {
         $keepalive = (int)($_POST['keepalive'] ?? 25);
         $peerEndpoint = trim($_POST['endpoint'] ?? '');
         $peerName = trim(preg_replace('/[^\w\s\-\.\(\)]/', '', $_POST['peer_name'] ?? ''));
+        $clientPrivateKey = trim($_POST['client_private_key'] ?? '');
+        $clientAddress = trim($_POST['client_address'] ?? '');
+        $clientDns = trim($_POST['client_dns'] ?? '');
+        $clientAllowedIps = trim($_POST['client_allowed_ips'] ?? '');
+        $clientEndpoint = trim($_POST['client_endpoint'] ?? '');
 
         if (!$iface || !$peerPubKey || !$peerAllowedIps) {
             echo json_encode(['ok' => false, 'error' => 'Interface, Public Key und Allowed IPs erforderlich']);
@@ -694,13 +829,21 @@ function handleWireguardAPI(string $action): bool {
         // Append peer section to config
         $peerSection = "\n[Peer]\n";
         if ($peerName) $peerSection .= "# $peerName\n";
+        $peerSection .= wgBuildPeerMetaLines([
+            'private_key' => $clientPrivateKey,
+            'address' => $clientAddress,
+            'dns' => $clientDns,
+            'allowed_ips' => $clientAllowedIps,
+            'endpoint' => $clientEndpoint,
+        ]);
         $peerSection .= "PublicKey = $peerPubKey\n";
         if ($peerPsk) $peerSection .= "PresharedKey = $peerPsk\n";
         $peerSection .= "AllowedIPs = $peerAllowedIps\n";
         if ($keepalive > 0) $peerSection .= "PersistentKeepalive = $keepalive\n";
 
-        if (!wgWriteConf($path, $conf . $peerSection)) {
-            echo json_encode(['ok' => false, 'error' => 'Config konnte nicht geschrieben werden — Berechtigung prüfen']);
+        $write = wgWriteConf($path, $conf . $peerSection);
+        if (!$write['ok']) {
+            echo json_encode(['ok' => false, 'error' => $write['error'] ?? 'Config konnte nicht geschrieben werden — Berechtigung prüfen', 'output' => $write['output'] ?? '']);
             return true;
         }
 
@@ -746,6 +889,10 @@ function handleWireguardAPI(string $action): bool {
         }
 
         $conf = file_get_contents($path);
+        $oldBlock = '';
+        if (preg_match('/\[Peer\][^[]*PublicKey\s*=\s*' . preg_quote($pubKey, '/') . '[^[]*/s', $conf, $m)) {
+            $oldBlock = $m[0];
+        }
 
         // Remove old [Peer] block for this public key
         $parts = preg_split('/(?=\[Peer\])/i', $conf);
@@ -760,14 +907,22 @@ function handleWireguardAPI(string $action): bool {
         // Append updated peer
         $newConf = rtrim($newConf) . "\n\n[Peer]\n";
         if ($name) $newConf .= "# $name\n";
+        if ($oldBlock !== '') {
+            if (preg_match_all('/^#\s*FloppyOps-(?:ClientPrivateKey|ClientAddress|ClientDNS|ClientAllowedIPs|ClientEndpoint):.*$/m', $oldBlock, $metaLines)) {
+                foreach ($metaLines[0] as $line) {
+                    $newConf .= trim($line) . "\n";
+                }
+            }
+        }
         $newConf .= "PublicKey = $pubKey\n";
         if ($psk) $newConf .= "PresharedKey = $psk\n";
         if ($endpoint) $newConf .= "Endpoint = $endpoint\n";
         $newConf .= "AllowedIPs = $allowedIps\n";
         if ($keepalive > 0) $newConf .= "PersistentKeepalive = $keepalive\n";
 
-        if (!wgWriteConf($path, $newConf)) {
-            echo json_encode(['ok' => false, 'error' => 'Config konnte nicht geschrieben werden']);
+        $write = wgWriteConf($path, $newConf);
+        if (!$write['ok']) {
+            echo json_encode(['ok' => false, 'error' => $write['error'] ?? 'Config konnte nicht geschrieben werden', 'output' => $write['output'] ?? '']);
             return true;
         }
 

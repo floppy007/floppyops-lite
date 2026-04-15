@@ -1,5 +1,54 @@
 # Changelog
 
+## v1.2.20 (2026-04-15)
+
+### Fixed
+- **WireGuard import/export flow is now consistent for client use**: peer exports now generate single-client configs instead of dumping the whole server file, preserve the client address correctly, and keep enough metadata for later re-export of newly created peers
+- **WireGuard import is more robust and clearer in the UI**: imported peers can be named directly, keep that name visible immediately, and no longer rewrite the suggested interface name from the uploaded filename
+- **WireGuard import no longer fails on common host mismatches**: configs with `DNS = ...` are automatically softened when `resolvconf` is unavailable, avoiding broken starts on hosts without that tool
+- **WireGuard tunnel deletion now works end-to-end from the dashboard**: the UI exposes tunnel removal, the backend deletes root-owned configs correctly, and setup/update keep the required sudoers rules in sync
+- **Update/runtime plumbing is aligned with the latest WireGuard fixes**: current setup, update, and live UI behaviour now match each other instead of leaving repo and installed app on different logic paths
+
+## v1.2.19 (2026-04-15)
+
+### Fixed
+- **WireGuard networks can now be deleted from the UI reliably**: the delete action now removes root-owned configs through the sudo-backed path instead of failing on plain `unlink()`
+- **WireGuard runtime sudoers now include config removal**: setup/update keep the `/etc/wireguard/*.conf` delete permission in sync so tunnel cleanup works after upgrades
+- **Client import keeps the default interface suggestion stable**: uploading a peer config no longer silently rewrites the suggested interface name from the filename
+- **Imported peer names now show up immediately without a later edit**: the import path now writes the chosen name into the first `[Peer]` block as well as the interface block, matching what the UI reads back
+- **WireGuard cards now expose full tunnel deletion in the UI**: complete WG networks can be removed directly from the dashboard with confirmation
+
+## v1.2.18 (2026-04-15)
+
+### Fixed
+- **Imported peer configs can now get a readable name immediately**: the WireGuard import modal now includes a peer-name field and writes it into the imported config for later display
+- **WireGuard import no longer dies on `DNS = ...` when `resolvconf` is missing**: the importer now disables the DNS line with a warning instead of saving a config that `wg-quick` cannot start on this host
+
+## v1.2.17 (2026-04-15)
+
+### Fixed
+- **Peer export now preserves the client tunnel address correctly**: exported peer configs now include the original client `Address` instead of trying to infer it from routed `AllowedIPs`
+- **Stored peer export metadata now keeps client address separately**: newly created peers retain enough data for later single-peer export without mangling interface addressing
+
+## v1.2.16 (2026-04-15)
+
+### Fixed
+- **Peer export now targets the peer instead of the whole server config**: the peer-row `.conf` and `.sh` exports no longer dump the complete server-side WireGuard file
+- **New peers keep client export metadata for later download**: when a peer is created through FloppyOps, its client-side private key, DNS, endpoint and routed networks are stored as internal comments so the exact peer config can be exported again later
+- **Peer add/update writes use the current `wgWriteConf()` result format correctly**: the API no longer treats config writes as a plain boolean
+
+## v1.2.15 (2026-04-15)
+
+### Fixed
+- **WireGuard import/save can now really write configs as `www-data`**: the host sudoers/runtime update now permits copying temporary `wgconf_*` files into `/etc/wireguard/` and applying the expected ownership and mode
+- **WireGuard create/import now reports real write/start failures**: the API stops claiming success when the config was not written or `wg-quick@...` failed to start, and returns the backend command output instead
+
+## v1.2.14 (2026-04-15)
+
+### Fixed
+- **App auto-update cron now runs the updater with valid shell quoting**: the generated cron command now builds the `update.sh --dir ...` call safely instead of producing a broken path expression
+- **Manual web self-update now uses the same safe command builder**: the in-app update trigger now constructs the updater command consistently, avoiding path and quoting drift between manual and scheduled updates
+
 ## v1.2.13 (2026-04-13)
 
 ### Added
