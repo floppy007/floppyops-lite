@@ -1,14 +1,26 @@
 # FloppyOps Lite
 
-**Open Source Server Admin Panel for Proxmox VE Dedicated Servers**
+**Open-source server admin panel for single-host Proxmox VE setups**
 
-A lightweight, modern web panel installed directly on a PVE host. Built for rented dedicated servers (Hetzner, OVH, Netcup, etc.) running Proxmox VE - no cluster, no multi-server, just manage your single server.
+FloppyOps Lite is a lightweight web UI that runs directly on your Proxmox VE host and brings the day-to-day terminal work for a dedicated server into one focused panel: updates, firewalling, reverse proxying, WireGuard, ZFS, Fail2ban, and VM/CT operations.
 
-![License](https://img.shields.io/badge/license-MIT-blue) ![PHP](https://img.shields.io/badge/PHP-8.x-purple) ![PVE](https://img.shields.io/badge/Proxmox_VE-8%2B-orange)
+Designed for **one rented server, one admin surface, no cluster overhead**.
+
+[![License](https://img.shields.io/badge/License-MIT-1f6feb)](LICENSE)
+[![PHP](https://img.shields.io/badge/PHP-8.x-777bb4)](#requirements)
+[![Proxmox VE](https://img.shields.io/badge/Proxmox_VE-8%2B-e57000)](#requirements)
+[![Version](https://img.shields.io/badge/Version-v1.2.20-0a7f5a)](#whats-new-in-v120)
+[![Issues](https://img.shields.io/badge/GitHub-Issues-111111?logo=github)](https://github.com/floppy007/floppyops-lite/issues)
 
 **[Deutsch](#deutsch)** | **[English](#english)**
 
-Current version: `v1.2.11`
+Current version: **`v1.2.20`**
+
+Quick links:
+- [Installation](#installation)
+- [Updating](#updating)
+- [Features](#features)
+- [Deutsch](#deutsch)
 
 ---
 
@@ -16,24 +28,23 @@ Current version: `v1.2.11`
 
 ## Why FloppyOps Lite?
 
-When you rent a dedicated server with Proxmox VE, certain tasks require terminal access:
+When you rent a dedicated server with Proxmox VE, too many routine tasks still fall back to SSH:
 
-- **Fail2ban** - Who is attacking my server? How many IPs are banned?
-- **Nginx Reverse Proxy** - Multiple websites/apps on one server, each with its own domain and SSL
-- **WireGuard VPN** - Secure access to internal CTs/VMs from anywhere, without exposing ports
-- **ZFS Snapshots** - Automatic backups, rollback, clone containers in seconds
-- **VM/CT Management** - Clone containers with custom hardware and network settings
+- **Updates & repos**: keep both the host and the app itself current without hand-rolling shell commands
+- **WireGuard**: create tunnels, add peers, import/export configs, inspect logs, and manage peer workflows from the UI
+- **Nginx & SSL**: run reverse proxies, issue certificates, and check certificate health
+- **Security**: review exposed ports, manage host firewall rules, and keep Fail2ban visible
+- **ZFS & VM/CT tooling**: snapshot, rollback, clone, and adjust guest hardware/network settings
 
-FloppyOps Lite gives you all of this in a beautiful web interface - directly on your server, no external service needed.
+FloppyOps Lite gives you a direct, self-hosted control surface for exactly those jobs, without adding an external SaaS layer or cluster management complexity.
 
-## What's new in v1.2.11?
+## What's new in v1.2.20?
 
-- Fail2ban and NAT checks no longer trigger sudo password mails on hosts where the related feature is missing or not enabled
-- Proxmox repository fixes now switch cleanly to the free community repos on `trixie`, including the matching Ceph repo
-- Empty POST actions now always include CSRF, fixing the in-app repo switch and similar update actions
-- Long-running `apt dist-upgrade` actions now run as a background job with status polling instead of timing out the web UI
-- System reboot hints can now also show the affected packages from `/var/run/reboot-required.pkgs`
-- `setup.sh` and `update.sh` both carry the new sudoers/runtime rules so future installs and upgrades keep the fixes intact
+- **WireGuard client flow is much cleaner**: peer export now produces real client configs instead of dumping the full server-side file
+- **Peer re-export works for newly created peers**: client address and related metadata are preserved so later exports stay usable
+- **WireGuard import is safer on real hosts**: imports can be named directly, keep the visible peer name immediately, and handle missing `resolvconf` more gracefully
+- **Tunnel deletion is now end-to-end**: complete WireGuard networks can be removed from the UI, including the root-owned config cleanup path
+- **Update/runtime plumbing is aligned**: current app logic, setup, update, and sudoers rules are in sync for the latest WireGuard and updater fixes
 
 ## Features
 
@@ -294,15 +305,23 @@ MIT License - free to use and modify.
 
 ### Warum FloppyOps Lite?
 
-Wenn du einen Dedicated Server mit Proxmox VE mietest, fehlen dir einige Dinge die du normalerweise nur über das Terminal erledigen kannst:
+Wenn du einen Dedicated Server mit Proxmox VE mietest, landest du für viele Alltagsaufgaben immer noch im Terminal:
 
-- **Fail2ban** - Wer greift meinen Server an? Wie viele IPs sind gebannt?
-- **Nginx Reverse Proxy** - Mehrere Webseiten/Apps auf einem Server, jede mit eigener Domain und SSL
-- **WireGuard VPN** - Sicherer Zugriff auf interne CTs/VMs von überall, ohne Ports oeffentlich freizugeben
-- **ZFS Snapshots** - Automatische Sicherungen, Rollback, Clone von Containern
-- **VM/CT Management** - Container und VMs clonen mit angepasster Hardware und Netzwerk
+- **Updates & Repos**: Host und App aktuell halten, ohne ständig Shell-Kommandos von Hand abzufeuern
+- **WireGuard**: Tunnel anlegen, Peers verwalten, Configs importieren/exportieren und Logs prüfen
+- **Nginx & SSL**: Reverse Proxies betreiben, Zertifikate ausrollen und SSL-Status sauber im Blick behalten
+- **Security**: offene Ports, Host-Firewall und Fail2ban zentral sehen und bedienen
+- **ZFS & VM/CT-Workflows**: Snapshots, Rollback, Clone und Hardware-/Netzwerk-Anpassungen direkt im Panel
 
-FloppyOps Lite gibt dir all das in einer schoenen Web-Oberflaeche - direkt auf deinem Server, kein externer Dienst noetig.
+FloppyOps Lite bringt genau diese Aufgaben in eine direkte, selbst gehostete Web-Oberfläche auf deinem Proxmox-Host, ohne externe Plattform und ohne Cluster-Overhead.
+
+### Was ist neu in v1.2.20?
+
+- **WireGuard-Client-Flow deutlich sauberer**: Peer-Exporte erzeugen jetzt echte Client-Configs statt die komplette Serverdatei auszugeben
+- **Neue Peers bleiben später erneut exportierbar**: Client-Adresse und die nötigen Export-Metadaten werden für neu angelegte Peers mitgespeichert
+- **WireGuard-Import ist robuster**: Importierte Peers können direkt benannt werden, zeigen den Namen sofort sichtbar an und brechen nicht mehr einfach an fehlendem `resolvconf`
+- **Tunnel-Löschen funktioniert jetzt komplett aus der UI**: ganze WireGuard-Netze können über das Dashboard inkl. Config-Cleanup entfernt werden
+- **Setup, Update und Runtime-Regeln sind wieder konsistent**: die aktuellen Fixes fuer WireGuard und den Update-Pfad laufen jetzt ueber denselben sauberen Stand
 
 ### Features
 
@@ -325,9 +344,9 @@ FloppyOps Lite gibt dir all das in einer schoenen Web-Oberflaeche - direkt auf d
 
 - **Proxmox VE 8+** auf einem Dedicated Server (Hetzner, OVH, Netcup, etc.)
 - **Root-Zugriff** (SSH oder Konsole)
-- Internetverbindung (fuer Paketinstallation)
+- Internetverbindung (für Paketinstallation)
 
-> PHP, Nginx und alle weiteren Abhaengigkeiten werden automatisch vom Setup-Script installiert.
+> PHP, Nginx und alle weiteren Abhängigkeiten werden automatisch vom Setup-Script installiert.
 
 ### Installation
 
@@ -344,32 +363,32 @@ cd floppyops-lite
 bash setup.sh
 ```
 
-Oder mit Domain fuer automatisches SSL:
+Oder mit Domain für automatisches SSL:
 
 ```bash
 bash setup.sh --domain admin.example.com
 ```
 
-**3. Der Setup-Wizard fuehrt durch die Konfiguration:**
+**3. Der Setup-Wizard führt durch die Konfiguration:**
 
 | Schritt | Was passiert |
 |---------|-------------|
-| **Sprache** | Deutsch oder English waehlen |
+| **Sprache** | Deutsch oder English wählen |
 | **Module** | Welche Module installiert werden sollen (Fail2ban, Nginx Proxy, ZFS, WireGuard) - oder alle |
-| **Abhaengigkeiten** | Installiert PHP-FPM, Nginx und ausgewaehlte Modul-Pakete automatisch |
-| **IP-Whitelist** | Panel-Zugriff auf deine IP oder Subnetz beschraenken (empfohlen). Deine SSH-Client-IP wird automatisch erkannt |
-| **Cloudflare** | Optional: `real_ip` Konfiguration fuer korrekte Client-IPs hinter Cloudflare Proxy |
+| **Abhängigkeiten** | Installiert PHP-FPM, Nginx und ausgewählte Modul-Pakete automatisch |
+| **IP-Whitelist** | Panel-Zugriff auf deine IP oder Subnetz beschränken (empfohlen). Deine SSH-Client-IP wird automatisch erkannt |
+| **Cloudflare** | Optional: `real_ip` Konfiguration für korrekte Client-IPs hinter Cloudflare Proxy |
 | **SSL** | Bei `--domain`: automatisches Let's Encrypt Zertifikat via Certbot |
 | **PVE-Integration** | FloppyOps-Button in der PVE-Toolbar + SSL-Zugang auf Port 8443 |
 
-**4. Panel im Browser oeffnen:**
+**4. Panel im Browser öffnen:**
 
 | Zugang | URL |
 |--------|-----|
 | **HTTP** | `http://DEINE-SERVER-IP` |
 | **SSL (PVE-Zertifikat)** | `https://DEINE-SERVER-IP:8443` |
 | **Eigene Domain** | `https://admin.example.com` (wenn `--domain` gesetzt) |
-| **PVE-Toolbar** | FloppyOps-Button in der PVE-Weboberflaeche |
+| **PVE-Toolbar** | FloppyOps-Button in der PVE-Weboberfläche |
 
 Login mit **PVE root-Zugangsdaten** (root / dein PVE-Passwort).
 
@@ -377,9 +396,9 @@ Login mit **PVE root-Zugangsdaten** (root / dein PVE-Passwort).
 
 | Option | Beschreibung |
 |--------|-------------|
-| `--domain FQDN` | Domain fuer das Panel - aktiviert nginx vHost + SSL via Certbot |
+| `--domain FQDN` | Domain für das Panel - aktiviert nginx vHost + SSL via Certbot |
 | `--dir /path` | Installationsverzeichnis (Standard: `/var/www/server-admin`) |
-| `--no-ssl` | Let's Encrypt SSL-Zertifikat ueberspringen |
+| `--no-ssl` | Let's Encrypt SSL-Zertifikat überspringen |
 
 ### Aktualisieren
 
@@ -390,9 +409,9 @@ cd /var/www/server-admin
 bash update.sh
 ```
 
-`bash update.sh` ist der empfohlene Update-Weg fuer Git- und Nicht-Git-Installationen.
+`bash update.sh` ist der empfohlene Update-Weg für Git- und Nicht-Git-Installationen.
 
-- Git-Installationen: holen den neuesten Code, validieren den Release-Dateisatz, erstellen ein Backup und synchronisieren den vollstaendigen App-Baum
+- Git-Installationen: holen den neuesten Code, validieren den Release-Dateisatz, erstellen ein Backup und synchronisieren den vollständigen App-Baum
 - Nicht-Git-Installationen: `bash update.sh --from /pfad/zu/floppyops-lite`
 - `config.php` und `data/` bleiben erhalten
 - Bei Git-Installationen muss der Worktree sauber sein
