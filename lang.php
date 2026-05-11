@@ -38,7 +38,7 @@ $L = [
         'login_user' => 'Benutzer',
         'login_pass' => 'Passwort',
         'login_btn' => 'Anmelden',
-        'login_hint' => 'Anmeldung mit Proxmox VE oder Linux (root) Zugangsdaten',
+        'login_hint' => 'Anmeldung mit PVE-Administrator oder Linux root/sudo-Mitglied',
         'login_error' => 'Benutzername oder Passwort falsch',
 
         // Tabs
@@ -398,7 +398,7 @@ $L = [
         'login_user' => 'Username',
         'login_pass' => 'Password',
         'login_btn' => 'Sign in',
-        'login_hint' => 'Sign in with Proxmox VE or Linux (root) credentials',
+        'login_hint' => 'Sign in as PVE Administrator or Linux root/sudo member',
         'login_error' => 'Invalid username or password',
 
         'tab_dashboard' => 'Dashboard',

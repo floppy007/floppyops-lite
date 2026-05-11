@@ -9,12 +9,12 @@ Designed for **one rented server, one admin surface, no cluster overhead**.
 [![License](https://img.shields.io/badge/License-MIT-1f6feb)](LICENSE)
 [![PHP](https://img.shields.io/badge/PHP-8.x-777bb4)](#requirements)
 [![Proxmox VE](https://img.shields.io/badge/Proxmox_VE-8%2B-e57000)](#requirements)
-[![Version](https://img.shields.io/badge/Version-v1.2.20-0a7f5a)](#whats-new-in-v120)
+[![Version](https://img.shields.io/badge/Version-v1.3.0-0a7f5a)](#whats-new-in-v130)
 [![Issues](https://img.shields.io/badge/GitHub-Issues-111111?logo=github)](https://github.com/floppy007/floppyops-lite/issues)
 
 **[Deutsch](#deutsch)** | **[English](#english)**
 
-Current version: **`v1.2.20`**
+Current version: **`v1.3.0`**
 
 Quick links:
 - [Installation](#installation)
@@ -38,13 +38,15 @@ When you rent a dedicated server with Proxmox VE, too many routine tasks still f
 
 FloppyOps Lite gives you a direct, self-hosted control surface for exactly those jobs, without adding an external SaaS layer or cluster management complexity.
 
-## What's new in v1.2.20?
+## What's new in v1.3.0?
 
-- **WireGuard client flow is much cleaner**: peer export now produces real client configs instead of dumping the full server-side file
-- **Peer re-export works for newly created peers**: client address and related metadata are preserved so later exports stay usable
-- **WireGuard import is safer on real hosts**: imports can be named directly, keep the visible peer name immediately, and handle missing `resolvconf` more gracefully
-- **Tunnel deletion is now end-to-end**: complete WireGuard networks can be removed from the UI, including the root-owned config cleanup path
-- **Update/runtime plumbing is aligned**: current app logic, setup, update, and sudoers rules are in sync for the latest WireGuard and updater fixes
+This is a **security release** with breaking auth changes. Read the [CHANGELOG](CHANGELOG.md) before upgrading.
+
+- **Panel access now requires admin-level authorization, not just a valid login.** The panel mirrors PVE's own model: after authentication it checks `Sys.Modify` + `Sys.PowerMgmt` on `/`. PAM users must be root or in the `sudo`/`wheel` group. A read-only PVE user no longer gets full panel control.
+- **WireGuard PostUp/PostDown lines are now allowlist-validated.** The wizard's NAT/Forwarding/sysctl patterns still work; arbitrary shell commands (which `wg-quick` would run as root) are rejected on create/edit and stripped with a warning on import.
+- **Session and login hardening.** Session cookie is now HttpOnly + Secure + SameSite=Strict, session id is regenerated on login (no more fixation), login form is CSRF-protected via a double-submit cookie, and the PVE API call verifies TLS against PVE's own root CA.
+- **nginx security headers refreshed on every update**, with a real Content-Security-Policy and `X-Frame-Options: DENY`. Previously the headers were only written on first install.
+- Carry-overs from v1.2.21-23: **autostart toggle** for WireGuard tunnels and a clearer **BOOT AN** badge in the tunnel card header.
 
 ## Features
 
@@ -230,7 +232,7 @@ bash setup.sh --domain admin.example.com
 | **Custom domain** | `https://admin.example.com` (if `--domain` was used) |
 | **PVE Toolbar** | Click the FloppyOps button in your PVE web interface |
 
-Login with your **PVE root credentials** (root / your PVE password).
+Login with a **PVE user holding the Administrator role** (Sys.Modify + Sys.PowerMgmt on `/`) or a **Linux user that is root or in the `sudo`/`wheel` group**. The panel verifies the authorization rights after login, the same way PVE itself does — a valid ticket alone is not sufficient.
 
 ### Setup Options
 
@@ -260,7 +262,7 @@ bash update.sh
 ## Architecture
 
 ```
-index.php           → Auth, Router, HTML/CSS Layout
+index.php           → Auth, Authorization, CSRF, Router, HTML/CSS Layout
 api/                → PHP API modules (one per feature)
   dashboard.php     → System stats (CPU, RAM, Disk, Network)
   fail2ban.php      → Jails, Logs, Config
@@ -282,11 +284,19 @@ js/                 → JavaScript modules (one per feature)
   security.js       → Port Scan, Host Firewall
   firewall.js       → Templates, VM/CT Rules
   updates.js        → App/System Updates, Repos
-config.php          → Credentials + settings (not in Git)
+helpers/            → Out-of-tree helpers invoked via sudo
+  pam_auth.py       → PAM authentication bridge (installed to /usr/local/libexec)
+pve-integration/    → PVE web-UI toolbar button + apt hook
+  install.sh        → Drops the button into the PVE UI, survives PVE updates
+  floppyops.js      → The button itself
+public/             → Static assets served as-is by nginx
+  style.css         → Login + reserved styles (most CSS is inlined in index.php)
+data/               → Runtime state (gitignored, 0750 www-data)
+config.php          → Credentials + settings (not in Git, 0640 root:www-data)
 config.example.php  → Template for config.php
 lang.php            → Translations (DE/EN)
-setup.sh            → Automated setup script
-update.sh           → Update script (git pull or --from)
+setup.sh            → Automated setup script — writes /etc/sudoers.d/server-admin
+update.sh           → Update script — also refreshes sudoers + security headers
 ```
 
 Modular PHP app - no framework, no database, no external dependencies (except Chart.js for the traffic graph).
@@ -315,13 +325,15 @@ Wenn du einen Dedicated Server mit Proxmox VE mietest, landest du für viele All
 
 FloppyOps Lite bringt genau diese Aufgaben in eine direkte, selbst gehostete Web-Oberfläche auf deinem Proxmox-Host, ohne externe Plattform und ohne Cluster-Overhead.
 
-### Was ist neu in v1.2.20?
+### Was ist neu in v1.3.0?
 
-- **WireGuard-Client-Flow deutlich sauberer**: Peer-Exporte erzeugen jetzt echte Client-Configs statt die komplette Serverdatei auszugeben
-- **Neue Peers bleiben später erneut exportierbar**: Client-Adresse und die nötigen Export-Metadaten werden für neu angelegte Peers mitgespeichert
-- **WireGuard-Import ist robuster**: Importierte Peers können direkt benannt werden, zeigen den Namen sofort sichtbar an und brechen nicht mehr einfach an fehlendem `resolvconf`
-- **Tunnel-Löschen funktioniert jetzt komplett aus der UI**: ganze WireGuard-Netze können über das Dashboard inkl. Config-Cleanup entfernt werden
-- **Setup, Update und Runtime-Regeln sind wieder konsistent**: die aktuellen Fixes fuer WireGuard und den Update-Pfad laufen jetzt ueber denselben sauberen Stand
+Das ist ein **Security-Release** mit Breaking Changes bei der Auth. Vor dem Upgrade bitte das [CHANGELOG](CHANGELOG.md) lesen.
+
+- **Panel-Zugriff braucht jetzt Admin-Rechte, nicht nur ein gültiges Login.** Das Panel spiegelt das PVE-Modell: nach der Authentifizierung wird `Sys.Modify` + `Sys.PowerMgmt` auf `/` geprüft. PAM-User müssen root oder in der `sudo`/`wheel`-Gruppe sein. Ein Read-Only-PVE-User kommt nicht mehr ins Panel.
+- **WireGuard PostUp/PostDown gegen Allowlist validiert.** Die NAT/Forwarding/sysctl-Muster des Wizards funktionieren weiter; beliebige Shell-Befehle (die `wg-quick` als root ausführen würde) werden beim Anlegen/Editieren abgelehnt und beim Import mit Warnung entfernt.
+- **Session- und Login-Härtung.** Session-Cookie ist jetzt HttpOnly + Secure + SameSite=Strict, Session-ID wird beim Login regeneriert (keine Fixation mehr), Login-Form per Double-Submit-Cookie gegen CSRF gesichert, und der PVE-API-Call verifiziert TLS gegen PVEs eigene Root-CA.
+- **nginx-Security-Header werden bei jedem Update aktualisiert**, mit echter Content-Security-Policy und `X-Frame-Options: DENY`. Vorher wurden die Header nur beim Erstinstall geschrieben.
+- Mit übernommen aus v1.2.21-23: **Autostart-Toggle** für WireGuard-Tunnel und ein klareres **BOOT AN** Badge im Tunnel-Header.
 
 ### Features
 
@@ -390,7 +402,7 @@ bash setup.sh --domain admin.example.com
 | **Eigene Domain** | `https://admin.example.com` (wenn `--domain` gesetzt) |
 | **PVE-Toolbar** | FloppyOps-Button in der PVE-Weboberfläche |
 
-Login mit **PVE root-Zugangsdaten** (root / dein PVE-Passwort).
+Login mit einem **PVE-Benutzer mit Administrator-Rolle** (Sys.Modify + Sys.PowerMgmt auf `/`) oder einem **Linux-User der root ist oder in der `sudo`/`wheel`-Gruppe**. Das Panel prüft die Autorisierung nach dem Login, genau wie PVE selbst — ein gültiges Ticket allein reicht nicht.
 
 ### Setup-Optionen
 

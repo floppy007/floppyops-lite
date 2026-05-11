@@ -16,6 +16,34 @@
  * @param string $content Neuer Config-Inhalt
  * @return bool true wenn erfolgreich
  */
+// Derive a WireGuard public key from a private key without going through a
+// shell. The legacy "echo '$priv' | wg pubkey" pattern lets a single quote
+// in the input close the shell-quoted string and execute arbitrary code,
+// which is reachable via user-controlled imported configs.
+function wgPubkeyFromPrivate(string $privateKey): string {
+    $privateKey = trim($privateKey);
+    if ($privateKey === '' || !preg_match('#^[A-Za-z0-9+/=]+$#', $privateKey)) {
+        return '';
+    }
+    $wg = findExecutable(['/usr/bin/wg', '/usr/local/bin/wg']);
+    if ($wg === null) return '';
+
+    $proc = proc_open(
+        [$wg, 'pubkey'],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes
+    );
+    if (!is_resource($proc)) return '';
+
+    fwrite($pipes[0], $privateKey . "\n");
+    fclose($pipes[0]);
+    $out = trim(stream_get_contents($pipes[1]) ?: '');
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($proc);
+    return $out;
+}
+
 function wgWriteConf(string $path, string $content): array {
     $written = @file_put_contents($path, $content);
     if ($written !== false) {
@@ -88,6 +116,60 @@ function wgRemoveConf(string $path): void {
     }
 }
 
+// PostUp/PostDown lines run as ROOT via wg-quick. Without filtering, an authed
+// user could smuggle "/bin/bash -c ..." through the config and reach root.
+// We allow only the commands the in-UI wizard generates plus a handful of
+// well-known migration patterns. Anything else is rejected (create) or
+// stripped with a warning (import).
+function wgIsAllowedPostHookCommand(string $cmd): bool {
+    $cmd = trim($cmd);
+    if ($cmd === '') return false;
+    if (str_contains($cmd, '..')) return false;
+    if (preg_match('/[`$&]|\|\||;|\n|\r/', $cmd)) return false;
+
+    $ifc = '[a-zA-Z0-9._%-]{1,15}';
+    $cidr = '[0-9a-fA-F:./]+';
+
+    $patterns = [
+        '#^echo [01] > /proc/sys/net/(ipv4|ipv6)/[a-zA-Z0-9._/-]+$#',
+        '#^sysctl -w net\.(ipv4|ipv6)\.[a-z0-9_.]+=[01]$#',
+        '#^ip6?tables -t nat -[ADI] POSTROUTING( -s ' . $cidr . ')? -o ' . $ifc . ' -j MASQUERADE$#',
+        '#^ip6?tables -[ADI] FORWARD -i ' . $ifc . '( -o ' . $ifc . ')? -j (ACCEPT|DROP|REJECT)$#',
+        '#^ip6?tables -[ADI] FORWARD -o ' . $ifc . ' -j (ACCEPT|DROP|REJECT)$#',
+        '#^ip route (add|del|replace) ' . $cidr . ' dev ' . $ifc . '$#',
+        '#^resolvconf -[ad] tun\.' . $ifc . '( -m [0-9]+)?( -x)?$#',
+    ];
+
+    foreach ($patterns as $p) {
+        if (preg_match($p, $cmd)) return true;
+    }
+    return false;
+}
+
+function wgValidatePostHook(string $line): array {
+    $line = trim($line);
+    if ($line === '') return ['ok' => true, 'sanitized' => '', 'rejected' => []];
+
+    $commands = preg_split('/\s*;\s*/', $line) ?: [];
+    $allowed = [];
+    $rejected = [];
+    foreach ($commands as $cmd) {
+        $cmd = trim($cmd);
+        if ($cmd === '') continue;
+        if (wgIsAllowedPostHookCommand($cmd)) {
+            $allowed[] = $cmd;
+        } else {
+            $rejected[] = $cmd;
+        }
+    }
+
+    return [
+        'ok' => empty($rejected),
+        'sanitized' => implode('; ', $allowed),
+        'rejected' => $rejected,
+    ];
+}
+
 function wgPrepareImportedConfig(string $content, string $peerName = ''): array {
     $prepared = trim($content);
     $warnings = [];
@@ -104,10 +186,42 @@ function wgPrepareImportedConfig(string $content, string $peerName = ''): array 
         $warnings[] = 'DNS-Zeile beim Import deaktiviert: resolvconf ist auf diesem Host nicht installiert';
     }
 
+    $hookCheck = wgSanitizePostHooksInConfig($prepared);
+    $prepared = $hookCheck['content'];
+    $warnings = array_merge($warnings, $hookCheck['warnings']);
+
     return [
         'content' => rtrim($prepared) . "\n",
         'warnings' => $warnings,
     ];
+}
+
+// Rewrite PostUp/PostDown lines in a full config blob.
+// Strips disallowed commands and returns warnings + a strict-error list so
+// callers can choose to reject (wg-save) or accept-with-warnings (wg-import).
+function wgSanitizePostHooksInConfig(string $content): array {
+    $warnings = [];
+    $errors = [];
+    foreach (['PostUp', 'PostDown'] as $hook) {
+        $content = preg_replace_callback(
+            '/^(' . $hook . '\s*=\s*)(.+)$/mi',
+            static function ($m) use ($hook, &$warnings, &$errors) {
+                $check = wgValidatePostHook($m[2]);
+                if ($check['ok']) {
+                    return $m[1] . $check['sanitized'];
+                }
+                $errors[] = $hook . ': ' . implode(' ; ', $check['rejected']);
+                if ($check['sanitized'] !== '') {
+                    $warnings[] = $hook . ': unzulaessige Befehle entfernt (' . implode(', ', $check['rejected']) . ')';
+                    return $m[1] . $check['sanitized'];
+                }
+                $warnings[] = $hook . ': Zeile entfernt - Befehle nicht auf der Allowlist (' . implode(', ', $check['rejected']) . ')';
+                return '# ' . $hook . ' entfernt: ' . implode(' ; ', $check['rejected']);
+            },
+            $content
+        ) ?? $content;
+    }
+    return ['content' => $content, 'warnings' => $warnings, 'errors' => $errors];
 }
 
 function wgParseRouteNetworks(string $raw): array
@@ -320,7 +434,7 @@ function handleWireguardAPI(string $action): bool {
                 $interfaces[$name]['listen_port'] = (int)$pm[1];
             }
             if (!$interfaces[$name]['public_key'] && preg_match('/PrivateKey\s*=\s*(\S+)/', $conf, $pm)) {
-                $pub = trim(shell_exec("echo '{$pm[1]}' | wg pubkey 2>/dev/null") ?? '');
+                $pub = wgPubkeyFromPrivate($pm[1]);
                 if ($pub) $interfaces[$name]['public_key'] = $pub;
             }
             if (empty($interfaces[$name]['address']) && preg_match('/Address\s*=\s*(\S+)/', $conf, $pm)) {
@@ -402,6 +516,12 @@ function handleWireguardAPI(string $action): bool {
             echo json_encode(['ok' => false, 'error' => 'Kein Interface angegeben']);
             return true;
         }
+        $hookCheck = wgSanitizePostHooksInConfig($content);
+        if (!empty($hookCheck['errors'])) {
+            echo json_encode(['ok' => false, 'error' => 'PostUp/PostDown enthaelt nicht erlaubte Befehle: ' . implode(' | ', $hookCheck['errors'])]);
+            return true;
+        }
+        $content = $hookCheck['content'];
         $path = "/etc/wireguard/$iface.conf";
         $write = wgWriteConf($path, $content);
         if (!$write['ok']) {
@@ -415,7 +535,7 @@ function handleWireguardAPI(string $action): bool {
     // GET: Neues WireGuard Keypair + PSK generieren
     if ($action === 'wg-genkeys') {
         $privkey = trim(shell_exec('wg genkey 2>/dev/null') ?? '');
-        $pubkey = $privkey ? trim(shell_exec("echo '$privkey' | wg pubkey 2>/dev/null") ?? '') : '';
+        $pubkey = $privkey ? wgPubkeyFromPrivate($privkey) : '';
         $psk = trim(shell_exec('wg genpsk 2>/dev/null') ?? '');
         echo json_encode(['ok' => (bool)$privkey, 'private_key' => $privkey, 'public_key' => $pubkey, 'preshared_key' => $psk]);
         return true;
@@ -468,6 +588,16 @@ function handleWireguardAPI(string $action): bool {
             echo json_encode(['ok' => false, 'error' => 'Interface, Adresse, Private Key und Peer Public Key erforderlich']);
             return true;
         }
+
+        $postUpCheck = wgValidatePostHook($postUp);
+        $postDownCheck = wgValidatePostHook($postDown);
+        if (!$postUpCheck['ok'] || !$postDownCheck['ok']) {
+            $rej = array_merge($postUpCheck['rejected'], $postDownCheck['rejected']);
+            echo json_encode(['ok' => false, 'error' => 'PostUp/PostDown enthaelt nicht erlaubte Befehle: ' . implode(' ; ', $rej)]);
+            return true;
+        }
+        $postUp = $postUpCheck['sanitized'];
+        $postDown = $postDownCheck['sanitized'];
 
         $path = "/etc/wireguard/$iface.conf";
         if (file_exists($path)) {
@@ -697,7 +827,7 @@ function handleWireguardAPI(string $action): bool {
 
         // Extract PrivateKey → derive PublicKey
         if (preg_match('/PrivateKey\s*=\s*(\S+)/', $conf, $m)) {
-            $serverPub = trim(shell_exec("echo '{$m[1]}' | wg pubkey 2>/dev/null") ?? '');
+            $serverPub = wgPubkeyFromPrivate($m[1]);
         }
         if (preg_match('/ListenPort\s*=\s*(\d+)/', $conf, $m)) $listenPort = (int)$m[1];
         if (preg_match('/Address\s*=\s*(\S+)/', $conf, $m)) $address = $m[1];

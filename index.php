@@ -11,8 +11,19 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.2.23');
+define('APP_VERSION', '1.3.0');
 require_once __DIR__ . '/config.php';
+// Harden session cookie before the session is started: HttpOnly blocks JS access,
+// Secure pins the cookie to TLS connections (the panel is reachable on :8443 with
+// the PVE cert even when the admin didn't set up Let's Encrypt), SameSite=Strict
+// blocks cross-site cookie attachment as defense in depth alongside CSRF tokens.
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => !empty($_SERVER['HTTPS']),
+    'httponly' => true,
+    'samesite' => 'Strict',
+]);
 session_start();
 require_once __DIR__ . '/lang.php';
 
@@ -111,24 +122,85 @@ function buildSudoCommand(array $argv, string $suffix = ''): ?string {
     return buildShellCommand(array_merge([$sudo, '-n'], $argv), $suffix);
 }
 
+// Build an HTTP stream context for talking to the local PVE API.
+// We verify the PVE server certificate against PVE's own root CA so that a
+// future change of the API hostname (or a process listening on 8006 that
+// isn't PVE) doesn't silently bypass the channel's integrity. If the CA
+// file is missing (e.g. a non-standard PVE setup) we fall back to the
+// previous unverified behavior, since the panel still needs to function.
+function pveStreamContext(array $http): array {
+    $ssl = ['verify_peer' => false, 'verify_peer_name' => false];
+    $caFile = '/etc/pve/pve-root-ca.pem';
+    if (is_readable($caFile)) {
+        $ssl = [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+            'cafile' => $caFile,
+            'peer_name' => trim(@file_get_contents('/etc/hostname') ?: gethostname() ?: 'localhost'),
+        ];
+    }
+    return ['http' => $http, 'ssl' => $ssl];
+}
+
+function pveApiUrl(string $path): string {
+    $host = trim(@file_get_contents('/etc/hostname') ?: gethostname() ?: '127.0.0.1');
+    // PVE cert is issued for the node hostname, but DNS for that hostname
+    // points to 127.0.0.1 on a local host; use the hostname so the TLS SNI
+    // and cert CN line up.
+    return "https://{$host}:8006{$path}";
+}
+
+// Mirrors PVE's own authorization model: a successful login (a valid ticket
+// or PAM auth) only proves identity, not privilege. We additionally require
+// admin-level rights on the host before granting panel access.
+//
+// PVE realm: query /access/permissions and require Sys.Modify + Sys.PowerMgmt
+// on path "/" (the rights the "Administrator" role grants).
+// PAM realm: user must be root or member of the sudo/wheel group.
+function pveCheckAdmin(string $ticket): bool {
+    $ctx = stream_context_create(pveStreamContext([
+        'method' => 'GET',
+        'header' => "Cookie: PVEAuthCookie=" . urlencode($ticket) . "\r\n",
+        'timeout' => 5,
+    ]));
+    $result = @file_get_contents(pveApiUrl('/api2/json/access/permissions?path=/'), false, $ctx);
+    if (!$result) return false;
+    $data = json_decode($result, true);
+    $perms = $data['data']['/'] ?? null;
+    if (!is_array($perms)) return false;
+    return !empty($perms['Sys.Modify']) && !empty($perms['Sys.PowerMgmt']);
+}
+
+function pamCheckAdmin(string $user): bool {
+    if ($user === 'root') return true;
+    if (!function_exists('posix_getgrnam')) return false;
+    foreach (['sudo', 'wheel'] as $group) {
+        $info = @posix_getgrnam($group);
+        if (is_array($info) && in_array($user, $info['members'] ?? [], true)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function authenticateUser(string $user, string $pass, string $method): array {
     // PVE API Auth
     if ($method === 'pve' || $method === 'auto') {
         $realm = str_contains($user, '@') ? '' : '@pam';
-        $ctx = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
-                'content' => http_build_query(['username' => $user . $realm, 'password' => $pass]),
-                'timeout' => 5,
-            ],
-            'ssl' => ['verify_peer' => false, 'verify_peer_name' => false],
-        ]);
-        $result = @file_get_contents('https://127.0.0.1:8006/api2/json/access/ticket', false, $ctx);
+        $ctx = stream_context_create(pveStreamContext([
+            'method' => 'POST',
+            'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
+            'content' => http_build_query(['username' => $user . $realm, 'password' => $pass]),
+            'timeout' => 5,
+        ]));
+        $result = @file_get_contents(pveApiUrl('/api2/json/access/ticket'), false, $ctx);
         if ($result) {
             $data = json_decode($result, true);
             if (!empty($data['data']['ticket'])) {
                 $pveUser = $data['data']['username'] ?? $user;
+                if (!pveCheckAdmin($data['data']['ticket'])) {
+                    return ['ok' => false, 'error' => 'Zugriff verweigert: PVE-Administrator-Rechte erforderlich (Sys.Modify + Sys.PowerMgmt auf /)'];
+                }
                 return ['ok' => true, 'user' => $pveUser, 'method' => 'pve'];
             }
         }
@@ -138,17 +210,48 @@ function authenticateUser(string $user, string $pass, string $method): array {
     // Linux PAM Auth (via root helper)
     if ($method === 'pam' || $method === 'auto') {
         $pamResult = authenticatePamUser($user, $pass);
-        if ($pamResult['ok']) return $pamResult;
+        if ($pamResult['ok']) {
+            if (!pamCheckAdmin($pamResult['user'])) {
+                return ['ok' => false, 'error' => 'Zugriff verweigert: root oder Mitglied der sudo/wheel-Gruppe erforderlich'];
+            }
+            return $pamResult;
+        }
         if ($method === 'pam') return $pamResult;
     }
 
     return ['ok' => false, 'error' => 'Benutzername oder Passwort falsch'];
 }
 
+// Double-submit cookie for the login form. A pre-session CSRF token can't live
+// in the session, so we issue a cookie + matching hidden field and compare on
+// submit. Without this, an attacker on another origin can silently log the
+// victim into an attacker-controlled account (login CSRF).
+$loginCsrfCookie = $_COOKIE['_login_csrf'] ?? '';
+if ($loginCsrfCookie === '' || !preg_match('/^[a-f0-9]{32,64}$/', $loginCsrfCookie)) {
+    $loginCsrfCookie = bin2hex(random_bytes(32));
+    setcookie('_login_csrf', $loginCsrfCookie, [
+        'expires' => 0,
+        'path' => '/',
+        'secure' => !empty($_SERVER['HTTPS']),
+        'httponly' => false, // intentionally readable: this isn't a session secret
+        'samesite' => 'Strict',
+    ]);
+}
+
 if (isset($_POST['_login'])) {
+    $postCsrf = $_POST['_login_csrf'] ?? '';
+    if ($postCsrf === '' || !hash_equals($loginCsrfCookie, $postCsrf)) {
+        $loginError = 'Login-Sicherheitstoken ungueltig - bitte Seite neu laden';
+        showLoginPage($loginError, $loginCsrfCookie);
+        exit;
+    }
     $realm = $_POST['realm'] ?? $authMethod;
     $authResult = authenticateUser($_POST['user'] ?? '', $_POST['pass'] ?? '', $realm);
     if ($authResult['ok']) {
+        // Regenerate the session id on privilege change to prevent fixation:
+        // an attacker who pre-set the visitor's PHPSESSID (e.g. via a sibling
+        // service on the same host) would otherwise inherit the authed session.
+        session_regenerate_id(true);
         $_SESSION['authed'] = true;
         $_SESSION['auth_user'] = $authResult['user'];
         $_SESSION['auth_method'] = $authResult['method'];
@@ -167,13 +270,14 @@ if (!isset($_SESSION['authed'])) {
         echo json_encode(['error' => 'Session expired']);
         exit;
     }
-    showLoginPage($loginError);
+    showLoginPage($loginError, $loginCsrfCookie);
     exit;
 }
 
-function showLoginPage(string $error = ''): void {
+function showLoginPage(string $error = '', string $csrf = ''): void {
     $appName = APP_NAME;
     $errHtml = $error ? '<div class="login-error">' . htmlspecialchars($error) . '</div>' : '';
+    $csrfAttr = htmlspecialchars($csrf, ENT_QUOTES);
     $lblUser = __('login_user');
     $lblPass = __('login_pass');
     $lblBtn = __('login_btn');
@@ -360,6 +464,7 @@ select.login-input option{background:#0c0f15;color:var(--text);padding:8px}
         {$errHtml}
         <form method="POST">
             <input type="hidden" name="_login" value="1">
+            <input type="hidden" name="_login_csrf" value="{$csrfAttr}">
             <div class="login-field">
                 <label class="login-label">{$lblUser}</label>
                 <input class="login-input" name="user" type="text" placeholder="root" autocomplete="username" autofocus>

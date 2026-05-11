@@ -168,6 +168,29 @@ install_lxc_route_fix_sudoers() {
     fi
 }
 
+install_security_headers() {
+    if ! command -v nginx >/dev/null 2>&1; then
+        return 0
+    fi
+    if ! run_root_cmd true 2>/dev/null; then
+        return 0
+    fi
+    run_root_cmd tee /etc/nginx/conf.d/security-headers.conf >/dev/null <<'SECEOF'
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+SECEOF
+    if run_root_cmd nginx -t >/dev/null 2>&1; then
+        run_root_cmd systemctl reload nginx >/dev/null 2>&1 || true
+        ok "Security-Header in /etc/nginx/conf.d/security-headers.conf aktualisiert"
+    else
+        warn "Security-Header geschrieben, aber nginx -t fehlgeschlagen — bitte manuell pruefen"
+    fi
+}
+
 install_runtime_sudoers() {
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/wgconf_* /etc/wireguard/*"
     ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /bin/chmod 0640 /etc/wireguard/*"
@@ -321,6 +344,7 @@ info "config.php bleibt unveraendert"
 install_pam_helper
 install_lxc_route_fix_sudoers
 install_runtime_sudoers
+install_security_headers
 reload_php_fpm
 
 # ── Ergebnis ─────────────────────────────────────────────

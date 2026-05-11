@@ -664,18 +664,16 @@ if [[ "$MOD_NGINX" == "true" ]]; then
         fi
     fi
 
-    # Security headers
-    if [[ ! -f /etc/nginx/conf.d/security-headers.conf ]]; then
-        cat > /etc/nginx/conf.d/security-headers.conf <<'SECEOF'
-add_header X-Frame-Options "SAMEORIGIN" always;
+    # Security headers (always refreshed, not just on first install)
+    cat > /etc/nginx/conf.d/security-headers.conf <<'SECEOF'
+add_header X-Frame-Options "DENY" always;
 add_header X-Content-Type-Options "nosniff" always;
-add_header X-XSS-Protection "1; mode=block" always;
-add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Referrer-Policy "no-referrer" always;
 add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
 SECEOF
-        ok "$(L secheaders)"
-    fi
+    ok "$(L secheaders)"
 
     # Rate limiting
     if [[ ! -f /etc/nginx/conf.d/rate-limit.conf ]]; then
