@@ -13,7 +13,7 @@ async function loadF2b() {
 
         jails.forEach(j => {
             const bannedHtml = j.banned_ips.length > 0
-                ? j.banned_ips.map(ip => `<div class="banned-ip"><span>${ip}</span><button class="unban-btn" title="${T.unban}" onclick="unban('${j.name}','${ip}')">&#10005;</button></div>`).join('')
+                ? j.banned_ips.map(ip => `<div class="banned-ip"><span>${escapeHtml(ip)}</span><button class="unban-btn" title="${T.unban}" onclick="unban('${escapeJsArg(j.name)}','${escapeJsArg(ip)}')">&#10005;</button></div>`).join('')
                 : '<span style="color:var(--text3);font-size:.78rem">Keine gebannten IPs</span>';
 
             grid.innerHTML += `
@@ -21,7 +21,7 @@ async function loadF2b() {
                     <div class="jail-header">
                         <div class="jail-name">
                             <span class="tag ${j.banned_current > 0 ? 'tag-red' : 'tag-green'}">${j.banned_current > 0 ? 'AKTIV' : 'OK'}</span>
-                            ${j.name}
+                            ${escapeHtml(j.name)}
                         </div>
                         <div class="jail-stats">
                             <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ${j.banned_current} gebannt</span>
@@ -40,7 +40,7 @@ async function loadF2b() {
         logEl.innerHTML = '';
         log.forEach(line => {
             let cls = '';
-            let hl = line.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+            let hl = escapeHtml(line);
             if (hl.includes(' Ban ')) { hl = hl.replace(/( Ban )/, '<span class="log-ban">$1</span>'); }
             else if (hl.includes(' Unban ')) { hl = hl.replace(/( Unban )/, '<span class="log-unban">$1</span>'); }
             else if (hl.includes(' Found ')) { hl = hl.replace(/( Found )/, '<span class="log-found">$1</span>'); }

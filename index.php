@@ -11,7 +11,7 @@
 // ║    5. JavaScript Module                      (js/*.js)         ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-define('APP_VERSION', '1.3.0');
+define('APP_VERSION', '1.3.1');
 require_once __DIR__ . '/config.php';
 // Harden session cookie before the session is started: HttpOnly blocks JS access,
 // Secure pins the cookie to TLS connections (the panel is reachable on :8443 with
@@ -293,6 +293,7 @@ function showLoginPage(string $error = '', string $csrf = ''): void {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="/favicon.png">
 <title>{$appName}  -  Login</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -551,7 +552,7 @@ if (isset($_GET['api'])) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= APP_NAME ?></title>
-<link rel="icon" type="image/png" href="data:image/png;base64,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">
+<link rel="icon" type="image/png" href="/favicon.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
 /* Fonts already loaded in login CSS above */
@@ -2984,6 +2985,22 @@ AllowedIPs = ..."></textarea>
     </div>
 </div>
 
+<!-- ─ Add Site Progress Modal ─────────────────────────── -->
+<div class="modal-overlay" id="addSiteProgressModal">
+    <div class="modal" style="max-width:640px">
+        <div class="modal-head">
+            <div class="modal-title" id="addSiteProgressTitle"><?= $lang === 'de' ? 'Site wird erstellt' : 'Creating Site' ?></div>
+            <button class="modal-close" id="addSiteProgressClose" onclick="closeModal('addSiteProgressModal');loadNginx();loadStats();" style="display:none">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="addSiteProgressSteps" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" id="addSiteProgressDone" onclick="closeModal('addSiteProgressModal');loadNginx();loadStats();" style="display:none"><?= $lang === 'de' ? 'Fertig' : 'Done' ?></button>
+        </div>
+    </div>
+</div>
+
 <!-- ─ Edit Site Modal ─────────────────────────────────── -->
 <div class="modal-overlay" id="editSiteModal">
     <div class="modal">
@@ -3061,16 +3078,17 @@ const T = <?= json_encode($t, JSON_UNESCAPED_UNICODE) ?>;
 </script>
 
 <!-- JS-Module  -  aufgeteilt nach Feature -->
-<script src="js/core.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/dashboard.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/fail2ban.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/nginx.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/vms.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/zfs.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/wireguard.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/security.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/firewall.js?v=<?= APP_VERSION ?>"></script>
-<script src="js/updates.js?v=<?= APP_VERSION ?>"></script>
+<?php $jsv = fn($f) => APP_VERSION . '-' . (@filemtime(__DIR__ . '/' . $f) ?: time()); ?>
+<script src="js/core.js?v=<?= $jsv('js/core.js') ?>"></script>
+<script src="js/dashboard.js?v=<?= $jsv('js/dashboard.js') ?>"></script>
+<script src="js/fail2ban.js?v=<?= $jsv('js/fail2ban.js') ?>"></script>
+<script src="js/nginx.js?v=<?= $jsv('js/nginx.js') ?>"></script>
+<script src="js/vms.js?v=<?= $jsv('js/vms.js') ?>"></script>
+<script src="js/zfs.js?v=<?= $jsv('js/zfs.js') ?>"></script>
+<script src="js/wireguard.js?v=<?= $jsv('js/wireguard.js') ?>"></script>
+<script src="js/security.js?v=<?= $jsv('js/security.js') ?>"></script>
+<script src="js/firewall.js?v=<?= $jsv('js/firewall.js') ?>"></script>
+<script src="js/updates.js?v=<?= $jsv('js/updates.js') ?>"></script>
 
 <div style="position:fixed;bottom:0;left:0;right:0;z-index:50;border-top:1px solid rgba(255,255,255,.04);background:rgba(5,8,16,.85);backdrop-filter:blur(12px)">
     <div style="max-width:1320px;margin:0 auto;padding:18px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">

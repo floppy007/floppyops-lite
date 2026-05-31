@@ -3,6 +3,28 @@
  * Kernfunktionen — Navigation, API, Toast, Modals, Hilfsfunktionen
  */
 
+// ── XSS-Schutz: Escaping-Helfer ──────────────────────
+// Serverdaten (Logzeilen, Hostnamen, Peer-Namen, IPs, Zertifikatsfelder …)
+// sind teils von Angreifern beeinflussbar. Jede Interpolation in innerHTML /
+// value="" / title="" muss durch escapeHtml(); Werte in inline-Handlern
+// (onclick="fn('…')") durch escapeJsArg().
+function escapeHtml(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Sicher für einen einfach-gequoteten JS-String innerhalb eines doppelt-
+// gequoteten HTML-Attributs: erst JS-String-Metazeichen escapen, dann HTML-
+// escapen. So kann der Wert weder aus dem JS-String noch aus dem Attribut
+// ausbrechen. Für numerische Argumente (z.B. vmid) nicht nötig.
+function escapeJsArg(s) {
+    return escapeHtml(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}
+
 // ── Navigation & Tabs ────────────────────────────────
 function getActiveSubTab(group, fallback) {
     const active = document.querySelector('#' + group + 'SubTabs .sub-tab.active');
@@ -67,12 +89,30 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
 });
 
+// Hash-based deep-link: jumping to /#network on page load opens that tab
+// and triggers its data load (including loadSslHealth via loadNginx).
+(function initFromHash() {
+    const h = (location.hash || '').replace(/^#/, '');
+    if (!h) return;
+    const mapped = _tabHashMap[h];
+    const targetTab = mapped ? mapped[0] : h;
+    if (document.querySelector('.nav-tab[data-tab="' + targetTab + '"]')) {
+        switchTab(targetTab);
+        if (mapped) switchSubTab(mapped[0], mapped[1]);
+    }
+})();
+
 
 // ── Toast Benachrichtigungen ─────────────────────────
 function toast(msg, type = 'success') {
     const el = document.createElement('div');
     el.className = 'toast ' + type;
-    el.innerHTML = (type === 'success' ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>') + '<span>' + msg + '</span>';
+    // Icon ist statisches Markup; die Nachricht (oft Server-Fehlertext) wird
+    // als Textknoten gesetzt, damit darin enthaltenes HTML nicht ausgeführt wird.
+    el.innerHTML = (type === 'success' ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>');
+    const span = document.createElement('span');
+    span.textContent = String(msg ?? '');
+    el.appendChild(span);
     document.getElementById('toasts').appendChild(el);
     setTimeout(() => el.remove(), 4000);
 }

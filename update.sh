@@ -99,20 +99,33 @@ require_dir() {
     [[ -d "$dir" ]] || { fail "Pflichtverzeichnis fehlt: $dir"; exit 1; }
 }
 
-ensure_sudoers_line() {
-    local line="$1"
-    local sudoers_file="/etc/sudoers.d/server-admin"
-
+# Regeneriert /etc/sudoers.d/server-admin VOLLSTÄNDIG aus der gemeinsamen Quelle
+# helpers/sudoers-rules.sh und ersetzt die Datei atomar. Anders als das frühere
+# additive ensure_sudoers_line() entfernt das auch veraltete/zu breite Altregeln
+# (cp */chmod */chown */iptables */pvesh */cat /etc/pve/*) auf bestehenden Hosts.
+install_sudoers() {
     if ! run_root_cmd true 2>/dev/null; then
         warn "Sudoers-Update uebersprungen (kein root/sudo ohne Passwort)"
         return 0
     fi
-
-    run_root_cmd mkdir -p /etc/sudoers.d
-    run_root_cmd touch "$sudoers_file"
-    if ! run_root_cmd grep -qF "$line" "$sudoers_file" 2>/dev/null; then
-        printf '%s\n' "$line" | run_root_cmd tee -a "$sudoers_file" >/dev/null
+    local helper="$INSTALL_DIR/helpers/sudoers-rules.sh"
+    if [[ ! -f "$helper" ]]; then
+        warn "helpers/sudoers-rules.sh fehlt — Sudoers unveraendert"
+        return 0
     fi
+    # shellcheck source=helpers/sudoers-rules.sh
+    source "$helper"
+    local tmp
+    tmp="$(mktemp /tmp/floppyops-sudoers.XXXXXX)"
+    emit_sudoers_rules > "$tmp"
+    if ! visudo -cf "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        fail "Erzeugte Sudoers-Regeln ungueltig — /etc/sudoers.d/server-admin unveraendert"
+        return 1
+    fi
+    run_root_cmd install -o root -g root -m 0440 "$tmp" /etc/sudoers.d/server-admin
+    rm -f "$tmp"
+    ok "Sudoers neu generiert (gehaertetes Regelwerk, Catch-alls entfernt)"
 }
 
 install_pam_helper() {
@@ -147,25 +160,8 @@ PY
 PAMEOF
     run_root_cmd chmod 644 /etc/pam.d/floppyops-lite
     ok "PAM-Service aktualisiert"
-
-    run_root_cmd mkdir -p /etc/sudoers.d
-    if ! run_root_cmd grep -qF 'www-data ALL=(root) NOPASSWD: /usr/local/libexec/floppyops-lite/pam_auth.py --user *' /etc/sudoers.d/server-admin 2>/dev/null; then
-        run_root_cmd sh -c "printf '%s\n' 'www-data ALL=(root) NOPASSWD: /usr/local/libexec/floppyops-lite/pam_auth.py --user *' >> /etc/sudoers.d/server-admin"
-    fi
-    run_root_cmd chmod 440 /etc/sudoers.d/server-admin
-    run_root_cmd visudo -cf /etc/sudoers.d/server-admin >/dev/null
-    ok "Sudoers fuer PAM-Helper aktualisiert"
-}
-
-install_lxc_route_fix_sudoers() {
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/pct list"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/pct config *"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/pct exec *"
-    if run_root_cmd true 2>/dev/null; then
-        run_root_cmd chmod 440 /etc/sudoers.d/server-admin
-        run_root_cmd visudo -cf /etc/sudoers.d/server-admin >/dev/null
-        ok "Sudoers fuer LXC Reachability aktualisiert"
-    fi
+    # Die sudoers-Regel für den PAM-Helper wird zentral in install_sudoers()
+    # mitgeschrieben (gemeinsame Quelle helpers/sudoers-rules.sh).
 }
 
 install_security_headers() {
@@ -188,33 +184,6 @@ SECEOF
         ok "Security-Header in /etc/nginx/conf.d/security-headers.conf aktualisiert"
     else
         warn "Security-Header geschrieben, aber nginx -t fehlgeschlagen — bitte manuell pruefen"
-    fi
-}
-
-install_runtime_sudoers() {
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/wgconf_* /etc/wireguard/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /bin/chmod 0640 /etc/wireguard/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/chown root\\:www-data /etc/wireguard/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/wireguard/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-available/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-enabled/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -L POSTROUTING -n"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -C POSTROUTING -s * -o * -j MASQUERADE"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -A POSTROUTING -s * -o * -j MASQUERADE"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/floppyops-lite_repo_* /etc/apt/sources.list.d/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/floppyops-lite_file_* /etc/cron.d/*"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /bin/chmod 0644 /etc/cron.d/floppyops-lite-update"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /bin/chmod 0644 /etc/cron.d/floppyops-lite-app-update"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.d/floppyops-lite-update"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.d/floppyops-lite-app-update"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.daily/floppyops-lite-update"
-    ensure_sudoers_line "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.daily/floppyops-lite-app-update"
-    if run_root_cmd true 2>/dev/null; then
-        run_root_cmd chmod 440 /etc/sudoers.d/server-admin
-        run_root_cmd visudo -cf /etc/sudoers.d/server-admin >/dev/null
-        ok "Sudoers fuer Runtime-Fixes aktualisiert"
     fi
 }
 
@@ -342,8 +311,7 @@ ok "Dateien vollstaendig synchronisiert"
 
 info "config.php bleibt unveraendert"
 install_pam_helper
-install_lxc_route_fix_sudoers
-install_runtime_sudoers
+install_sudoers
 install_security_headers
 reload_php_fpm
 

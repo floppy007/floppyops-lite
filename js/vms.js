@@ -40,16 +40,16 @@ async function loadDashboardVms() {
             html += '<tr style="border-bottom:1px solid var(--border-subtle)">';
             html += '<td style="padding:5px 6px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + dot + '"></span></td>';
             html += '<td style="padding:5px 6px;font-family:var(--mono);font-weight:600">' + v.vmid + '</td>';
-            html += '<td style="padding:5px 6px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (v.name || '—') + '</td>';
+            html += '<td style="padding:5px 6px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || '—') + '</td>';
             html += '<td style="padding:5px 6px"><span style="font-size:.58rem;padding:1px 5px;border-radius:3px;background:rgba(' + (v.type==='qemu'?'168,85,247':'64,196,255') + ',.08);color:' + typeC + '">' + typeL + '</span></td>';
             html += '<td style="padding:5px 6px;font-family:var(--mono);font-size:.68rem;color:var(--text2)">' + v.cpus + '</td>';
             html += '<td style="padding:5px 6px;font-family:var(--mono);font-size:.68rem;color:var(--text2)">' + (isUp ? fmtBytes(v.mem_used) + ' <span style="color:var(--text3)">/ ' + fmtBytes(v.mem) + '</span>' : fmtBytes(v.mem)) + '</td>';
             html += '<td style="padding:5px 6px;text-align:right;white-space:nowrap">';
             if (isUp) {
-                html += '<button class="btn btn-sm btn-red" onclick="pveVmAction(' + v.vmid + ',\'' + v.type + '\',\'stop\')" style="padding:1px 5px;font-size:.5rem" title="Stop">Stop</button> ';
-                html += '<button class="btn btn-sm" onclick="pveVmAction(' + v.vmid + ',\'' + v.type + '\',\'restart\')" style="padding:1px 5px;font-size:.5rem" title="Restart">Restart</button>';
+                html += '<button class="btn btn-sm btn-red" onclick="pveVmAction(' + v.vmid + ',\'' + escapeJsArg(v.type) + '\',\'stop\')" style="padding:1px 5px;font-size:.5rem" title="Stop">Stop</button> ';
+                html += '<button class="btn btn-sm" onclick="pveVmAction(' + v.vmid + ',\'' + escapeJsArg(v.type) + '\',\'restart\')" style="padding:1px 5px;font-size:.5rem" title="Restart">Restart</button>';
             } else {
-                html += '<button class="btn btn-sm btn-green" onclick="pveVmAction(' + v.vmid + ',\'' + v.type + '\',\'start\')" style="padding:1px 5px;font-size:.5rem" title="Start">Start</button>';
+                html += '<button class="btn btn-sm btn-green" onclick="pveVmAction(' + v.vmid + ',\'' + escapeJsArg(v.type) + '\',\'start\')" style="padding:1px 5px;font-size:.5rem" title="Start">Start</button>';
             }
             html += '</td></tr>';
         });
@@ -92,13 +92,13 @@ async function loadPveVms() {
 
             html += '<tr>' +
                 '<td style="font-family:var(--mono);font-size:.78rem;font-weight:600">' + v.vmid + '</td>' +
-                '<td style="font-size:.78rem;font-weight:500">' + (v.name || '—') + '</td>' +
+                '<td style="font-size:.78rem;font-weight:500">' + escapeHtml(v.name || '—') + '</td>' +
                 '<td>' + typeTag + '</td>' +
                 '<td>' + statusTag + '</td>' +
                 '<td style="font-size:.72rem;color:var(--text2)">' + v.cpus + ' vCPU</td>' +
                 '<td style="font-size:.72rem"><span style="color:var(--text2)">' + fmtBytes(v.mem_used) + '</span> <span style="color:var(--text3)">/ ' + fmtBytes(v.mem) + '</span></td>' +
                 '<td style="font-size:.72rem"><span style="color:var(--text2)">' + fmtBytes(v.disk_used) + '</span> <span style="color:var(--text3)">/ ' + fmtBytes(v.disk) + '</span></td>' +
-                '<td style="text-align:right"><button class="btn btn-sm" onclick="pveOpenClone(' + v.vmid + ',\'' + v.type + '\',\'' + (v.name || '').replace(/'/g, "\\'") + '\')" title="Clone"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Clone</button></td>' +
+                '<td style="text-align:right"><button class="btn btn-sm" onclick="pveOpenClone(' + v.vmid + ',\'' + escapeJsArg(v.type) + '\',\'' + escapeJsArg(v.name || '') + '\')" title="Clone"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Clone</button></td>' +
             '</tr>';
         });
         html += '</tbody></table>';
@@ -134,7 +134,7 @@ async function pveOpenClone(vmid, type, name) {
             const net = cfg['net' + i];
             const bridge = (net.match(/bridge=([^,]+)/) || [])[1] || '?';
             const ip = (net.match(/ip=([^,]+)/) || [])[1] || 'DHCP';
-            netInfo += '<div style="font-size:.62rem;color:var(--text3);font-family:var(--mono)">net' + i + ': ' + bridge + ' &middot; ' + ip + '</div>';
+            netInfo += '<div style="font-size:.62rem;color:var(--text3);font-family:var(--mono)">net' + i + ': ' + escapeHtml(bridge) + ' &middot; ' + escapeHtml(ip) + '</div>';
         }
     }
 
@@ -142,18 +142,18 @@ async function pveOpenClone(vmid, type, name) {
     if (storages.ok) {
         storages.storages.forEach(s => {
             const free = s.avail > 0 ? ' (' + fmtBytes(s.avail) + ' frei)' : '';
-            storOpts += '<option value="' + s.name + '">' + s.name + free + '</option>';
+            storOpts += '<option value="' + escapeHtml(s.name) + '">' + escapeHtml(s.name) + free + '</option>';
         });
     }
 
     document.getElementById('pveCloneBody').innerHTML = `
         <div style="padding:8px 12px;background:rgba(255,255,255,.02);border:1px solid var(--border-subtle);border-radius:6px;margin-bottom:14px;display:flex;align-items:center;gap:8px">
             <span style="font-size:.58rem;padding:2px 6px;border-radius:3px;background:${type === 'qemu' ? 'rgba(168,85,247,.08);color:#a855f7' : 'rgba(64,196,255,.08);color:var(--blue)'}">${typeLabel}</span>
-            <span style="font-size:.82rem;font-weight:600">${name || 'ID ' + vmid}</span>
+            <span style="font-size:.82rem;font-weight:600">${escapeHtml(name || 'ID ' + vmid)}</span>
             <span style="font-family:var(--mono);font-size:.68rem;color:var(--text3)">${cores} vCPU &middot; ${memory} MB RAM</span>
         </div>
         <input type="hidden" id="pveCloneVmid" value="${vmid}">
-        <input type="hidden" id="pveCloneType" value="${type}">
+        <input type="hidden" id="pveCloneType" value="${escapeHtml(type)}">
 
         <div style="display:flex;gap:10px;margin-bottom:12px">
             <div style="flex:1">
@@ -162,7 +162,7 @@ async function pveOpenClone(vmid, type, name) {
             </div>
             <div style="flex:2">
                 <label class="form-label">Name</label>
-                <input class="form-input" id="pveCloneName" value="${(name || '') + '-clone'}">
+                <input class="form-input" id="pveCloneName" value="${escapeHtml((name || '') + '-clone')}">
             </div>
         </div>
 
@@ -217,7 +217,7 @@ async function pveOpenClone(vmid, type, name) {
         </div>
         <div>
             <label class="form-label">Beschreibung <span style="color:var(--text3);font-size:.55rem">(optional)</span></label>
-            <input class="form-input" id="pveCloneDesc" value="Clone von ${name || typeLabel + ' ' + vmid}" style="font-size:.75rem">
+            <input class="form-input" id="pveCloneDesc" value="Clone von ${escapeHtml(name || typeLabel + ' ' + vmid)}" style="font-size:.75rem">
         </div>
     `;
 

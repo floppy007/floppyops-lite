@@ -56,15 +56,15 @@ async function loadSecScan() {
                 ? `<span style="background:${SEC_RISK_COLORS[p.risk]};color:#fff;padding:1px 7px;border-radius:4px;font-size:.6rem;font-weight:600">${T['sec_risk_' + p.risk]}</span>`
                 : (p.external ? `<span style="color:var(--text3);font-size:.65rem">—</span>` : `<span style="color:var(--green);font-size:.65rem">${T.sec_safe}</span>`);
             const addrBadge = p.external
-                ? `<span style="color:var(--yellow);font-size:.7rem">${p.addr}</span>`
-                : `<span style="color:var(--green);font-size:.7rem">${p.addr}</span>`;
+                ? `<span style="color:var(--yellow);font-size:.7rem">${escapeHtml(p.addr)}</span>`
+                : `<span style="color:var(--green);font-size:.7rem">${escapeHtml(p.addr)}</span>`;
             const blockBtn = p.risk
-                ? `<button class="btn btn-sm btn-red" onclick="secBlockPort(${p.port},'${p.service}')" style="padding:2px 8px;font-size:.6rem">${T.sec_blocked}</button>`
+                ? `<button class="btn btn-sm btn-red" onclick="secBlockPort(${p.port},'${escapeJsArg(p.service)}')" style="padding:2px 8px;font-size:.6rem">${T.sec_blocked}</button>`
                 : '';
             html += `<tr style="border-bottom:1px solid var(--border-subtle)">
                 <td style="padding:6px 12px;font-family:var(--mono);font-weight:600">${p.port}</td>
-                <td style="padding:6px 12px">${p.service}</td>
-                <td style="padding:6px 12px;color:var(--text3)">${p.process}</td>
+                <td style="padding:6px 12px">${escapeHtml(p.service)}</td>
+                <td style="padding:6px 12px;color:var(--text3)">${escapeHtml(p.process)}</td>
                 <td style="padding:6px 12px">${addrBadge}</td>
                 <td style="padding:6px 12px">${riskBadge}</td>
                 <td style="padding:6px 12px;text-align:right">${blockBtn}</td>
@@ -77,7 +77,7 @@ async function loadSecScan() {
     // Firewall status
     const fw = d.firewall;
     const dot = (on) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${on ? 'var(--green)' : 'var(--red)'};margin-right:6px"></span>`;
-    const policyBadge = fw.dc_enabled ? `<span style="background:rgba(255,255,255,.06);padding:1px 8px;border-radius:4px;font-size:.6rem;font-family:var(--mono);margin-left:6px">Input: ${fw.dc_policy_in || 'ACCEPT'}</span>` : '';
+    const policyBadge = fw.dc_enabled ? `<span style="background:rgba(255,255,255,.06);padding:1px 8px;border-radius:4px;font-size:.6rem;font-family:var(--mono);margin-left:6px">Input: ${escapeHtml(fw.dc_policy_in || 'ACCEPT')}</span>` : '';
     const pvePublic = fw.pve_public_8006 || { enabled: false };
     const appPublic = fw.lite_app_public || { enabled: false, host: '' };
     document.getElementById('secFwStatus').innerHTML = `
@@ -87,7 +87,7 @@ async function loadSecScan() {
                 ${!fw.dc_enabled ? `<button class="btn btn-sm btn-green" onclick="secEnableFw('dc')" style="padding:2px 10px;font-size:.6rem">${T.sec_fw_enable}</button>` : ''}
             </div>
             <div style="display:flex;align-items:center;gap:12px">
-                <div>${dot(fw.node_enabled)}${T.sec_node_level} (${fw.node}): <strong>${fw.node_enabled ? T.sec_fw_enabled : T.sec_fw_disabled}</strong></div>
+                <div>${dot(fw.node_enabled)}${T.sec_node_level} (${escapeHtml(fw.node)}): <strong>${fw.node_enabled ? T.sec_fw_enabled : T.sec_fw_disabled}</strong></div>
                 ${!fw.node_enabled ? `<button class="btn btn-sm btn-green" onclick="secEnableFw('node')" style="padding:2px 10px;font-size:.6rem">${T.sec_fw_enable}</button>` : ''}
             </div>
         </div>`;
@@ -107,7 +107,7 @@ async function loadSecScan() {
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                     <div>
                         <div style="font-size:.78rem;font-weight:600">${T.sec_app_public_title}</div>
-                        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${T.sec_app_public_desc}${appPublic.host ? ' (' + appPublic.host + ')' : ''}</div>
+                        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${T.sec_app_public_desc}${appPublic.host ? ' (' + escapeHtml(appPublic.host) + ')' : ''}</div>
                     </div>
                     <button class="btn btn-sm ${appPublic.enabled ? '' : 'btn-green'}" onclick="secToggleAppPublic(${appPublic.enabled ? 0 : 1})">${appPublic.enabled ? T.sec_public_disable : T.sec_public_enable}</button>
                 </div>
@@ -146,11 +146,11 @@ async function loadSecFwRules() {
             : '<span style="background:rgba(255,255,255,.06);color:var(--text3);padding:1px 6px;border-radius:3px;font-size:.6rem">Node</span>';
         html += `<tr style="border-bottom:1px solid var(--border-subtle)">
             <td style="padding:6px 12px;color:var(--text3)">${r.pos ?? ''}</td>
-            <td style="padding:6px 12px;font-weight:600;color:${actionColor}">${r.action ?? ''}</td>
-            <td style="padding:6px 12px">${r.type ?? ''}</td>
-            <td style="padding:6px 12px;font-family:var(--mono)">${r.dport ?? '*'}</td>
-            <td style="padding:6px 12px;font-family:var(--mono)">${r.source ?? '*'}</td>
-            <td style="padding:6px 12px;color:var(--text3);font-size:.7rem">${r.comment ?? ''}</td>
+            <td style="padding:6px 12px;font-weight:600;color:${actionColor}">${escapeHtml(r.action ?? '')}</td>
+            <td style="padding:6px 12px">${escapeHtml(r.type ?? '')}</td>
+            <td style="padding:6px 12px;font-family:var(--mono)">${escapeHtml(r.dport ?? '*')}</td>
+            <td style="padding:6px 12px;font-family:var(--mono)">${escapeHtml(r.source ?? '*')}</td>
+            <td style="padding:6px 12px;color:var(--text3);font-size:.7rem">${escapeHtml(r.comment ?? '')}</td>
             <td style="padding:6px 12px">${levelBadge}</td>
             <td style="padding:6px 12px;text-align:right">
                 <button class="btn btn-sm btn-red" onclick="secDeleteRule(${r.pos},'${r._level}')" style="padding:1px 6px;font-size:.55rem" title="${T.sec_delete_rule}">
@@ -164,7 +164,7 @@ async function loadSecFwRules() {
 }
 
 async function secBlockPort(port, service) {
-    const msg = T.sec_block_confirm.replace('%d', port).replace('%s', service);
+    const msg = T.sec_block_confirm.replace('%d', port).replace('%s', escapeHtml(service));
     if (!await appConfirm(T.sec_block_port, msg)) return;
     const d = await api('sec-fw-block', 'POST', { port });
     if (d.ok) { loadSecScan(); loadSecFwRules(); }

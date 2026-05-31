@@ -43,16 +43,16 @@ async function loadFwTemplates() {
             ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px">${assigned.map(a => `<span style="font-size:.55rem;background:rgba(34,197,94,.12);color:var(--green);padding:1px 5px;border-radius:3px">${a.type === 'qemu' ? 'VM' : 'CT'} ${a.vmid}</span>`).join('')}</div>`
             : '';
         const borderColor = assigned.length > 0 ? 'rgba(34,197,94,.25)' : 'var(--border-subtle)';
-        html += `<div style="background:var(--bg);border:1px solid ${borderColor};border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:border-color .15s" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='${borderColor}'" onclick="fwShowTemplate('${t.id}')">
+        html += `<div style="background:var(--bg);border:1px solid ${borderColor};border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:border-color .15s" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='${borderColor}'" onclick="fwShowTemplate('${escapeJsArg(t.id)}')">
             <div style="display:flex;align-items:center;gap:8px">
                 <span style="color:var(--accent);flex-shrink:0">${icon}</span>
                 <div style="flex:1;min-width:0">
                     <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-                        <span style="font-size:.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</span>
+                        <span style="font-size:.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.name)}</span>
                         ${badge}
                         <span style="font-size:.52rem;color:var(--text3);font-family:var(--mono);margin-left:auto;flex-shrink:0">${ruleCount}</span>
                     </div>
-                    <div style="font-size:.64rem;color:var(--text3);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description}</div>
+                    <div style="font-size:.64rem;color:var(--text3);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.description)}</div>
                 </div>
             </div>
             ${assignedHtml}
@@ -82,11 +82,11 @@ async function fwShowTemplate(id) {
         const isMacro = !!r.macro;
         rhtml += `<tr class="fwTplRow" style="border-bottom:1px solid var(--border-subtle)" data-idx="${i}">
             <td style="padding:3px 6px"><input type="checkbox" checked class="fwTplCb" data-idx="${i}" style="accent-color:var(--accent)"></td>
-            <td style="padding:3px 6px;color:${ac};font-weight:600;font-size:.68rem">${r.action}</td>
-            <td style="padding:3px 6px">${isMacro ? '<span style="color:var(--text3);font-size:.65rem">—</span>' : `<input style="${inputStyle}" class="fwTplPort" data-idx="${i}" value="${r.dport || ''}">`}</td>
-            <td style="padding:3px 6px;font-size:.68rem">${r.macro || r.proto || 'tcp'}</td>
-            <td style="padding:3px 6px"><input style="${inputStyle}" class="fwTplSrc" data-idx="${i}" value="${r.source || ''}"></td>
-            <td style="padding:3px 6px;color:var(--text3);font-size:.68rem">${r.comment || ''}</td>
+            <td style="padding:3px 6px;color:${ac};font-weight:600;font-size:.68rem">${escapeHtml(r.action)}</td>
+            <td style="padding:3px 6px">${isMacro ? '<span style="color:var(--text3);font-size:.65rem">—</span>' : `<input style="${inputStyle}" class="fwTplPort" data-idx="${i}" value="${escapeHtml(r.dport || '')}">`}</td>
+            <td style="padding:3px 6px;font-size:.68rem">${escapeHtml(r.macro || r.proto || 'tcp')}</td>
+            <td style="padding:3px 6px"><input style="${inputStyle}" class="fwTplSrc" data-idx="${i}" value="${escapeHtml(r.source || '')}"></td>
+            <td style="padding:3px 6px;color:var(--text3);font-size:.68rem">${escapeHtml(r.comment || '')}</td>
         </tr>`;
     });
     rhtml += '</tbody></table>';
@@ -102,8 +102,8 @@ async function fwShowTemplate(id) {
     const sel = document.getElementById('fwTplTarget');
     sel.innerHTML = `<option value="">${T.fw_select_vm}</option>`;
     _fwVmCache.forEach(g => {
-        const label = `${g.vmid} — ${g.name} (${g.type === 'qemu' ? 'VM' : 'CT'})`;
-        sel.innerHTML += `<option value="${g.vmid}:${g.type}">${label}</option>`;
+        const label = `${g.vmid} — ${escapeHtml(g.name)} (${g.type === 'qemu' ? 'VM' : 'CT'})`;
+        sel.innerHTML += `<option value="${g.vmid}:${escapeHtml(g.type)}">${label}</option>`;
     });
 
     document.getElementById('fwTplClear').checked = false;
@@ -115,7 +115,7 @@ async function fwShowTemplate(id) {
     // Delete button (custom only)
     const delBtn = document.getElementById('fwTplDeleteBtn');
     if (tpl._type === 'custom') {
-        delBtn.innerHTML = `<button class="btn btn-red" onclick="fwDeleteTemplate('${tpl.id}')" style="font-size:.7rem">${T.fw_delete_template}</button>`;
+        delBtn.innerHTML = `<button class="btn btn-red" onclick="fwDeleteTemplate('${escapeJsArg(tpl.id)}')" style="font-size:.7rem">${T.fw_delete_template}</button>`;
     } else { delBtn.innerHTML = ''; }
 
     document.getElementById('fwTemplateModal').dataset.tplId = id;
@@ -189,23 +189,23 @@ async function loadFwVmList() {
         const typeBadge = g.type === 'qemu'
             ? '<span style="background:rgba(59,130,246,.15);color:#3b82f6;padding:1px 5px;border-radius:3px;font-size:.6rem;font-weight:600">VM</span>'
             : '<span style="background:rgba(139,92,246,.15);color:#8b5cf6;padding:1px 5px;border-radius:3px;font-size:.6rem;font-weight:600">CT</span>';
-        const policyBadge = g.fw_enabled ? `<span style="font-family:var(--mono);font-size:.65rem;background:rgba(255,255,255,.06);padding:2px 6px;border-radius:3px">${g.fw_policy_in}</span>` : '<span style="color:var(--text3)">—</span>';
+        const policyBadge = g.fw_enabled ? `<span style="font-family:var(--mono);font-size:.65rem;background:rgba(255,255,255,.06);padding:2px 6px;border-radius:3px">${escapeHtml(g.fw_policy_in)}</span>` : '<span style="color:var(--text3)">—</span>';
         const toggleColor = g.fw_enabled ? 'var(--green)' : 'var(--text3)';
         const toggleLabel = g.fw_enabled ? 'ON' : 'OFF';
         const toggleNext = g.fw_enabled ? 0 : 1;
         html += `<tr style="border-bottom:1px solid var(--border-subtle)">
             <td style="${tdStyle};font-family:var(--mono);font-weight:600;color:var(--text2)">${g.vmid}</td>
-            <td style="${tdStyle};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.name}</td>
+            <td style="${tdStyle};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.name)}</td>
             <td style="${tdStyle}">${typeBadge}</td>
-            <td style="${tdStyle};font-family:var(--mono);font-size:.65rem">${g.ips && g.ips.length ? g.ips.map(ip => `<div style="display:flex;align-items:center;gap:4px">${g.is_public ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--yellow);flex-shrink:0" title="Public"></span>' : '<span style="width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0" title="Intern"></span>'}${ip}</div>`).join('') : '<span style="color:var(--text3)">—</span>'}</td>
-            <td style="${tdStyle}"><div style="display:flex;align-items:center;gap:5px">${statusDot}<span style="font-size:.7rem">${g.status}</span></div></td>
+            <td style="${tdStyle};font-family:var(--mono);font-size:.65rem">${g.ips && g.ips.length ? g.ips.map(ip => `<div style="display:flex;align-items:center;gap:4px">${g.is_public ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--yellow);flex-shrink:0" title="Public"></span>' : '<span style="width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0" title="Intern"></span>'}${escapeHtml(ip)}</div>`).join('') : '<span style="color:var(--text3)">—</span>'}</td>
+            <td style="${tdStyle}"><div style="display:flex;align-items:center;gap:5px">${statusDot}<span style="font-size:.7rem">${escapeHtml(g.status)}</span></div></td>
             <td style="${tdStyle}"><div style="display:flex;align-items:center;gap:5px">${fwDot}<span style="font-size:.7rem">${fwLabel}</span></div></td>
             <td style="${tdStyle}">${policyBadge}</td>
             <td style="${tdStyle};font-family:var(--mono);text-align:center">${g.rule_count}</td>
-            <td style="${tdStyle};font-size:.65rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.template ? `<span style="color:var(--accent)">${g.template.template_name}</span>` : '<span style="color:var(--text3)">—</span>'}</td>
+            <td style="${tdStyle};font-size:.65rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.template ? `<span style="color:var(--accent)">${escapeHtml(g.template.template_name)}</span>` : '<span style="color:var(--text3)">—</span>'}</td>
             <td style="${tdStyle};text-align:right;white-space:nowrap">
-                <button class="btn btn-sm" onclick="fwViewVmRules(${g.vmid},'${g.type}','${g.name}')" style="padding:2px 8px;font-size:.55rem">${T.fw_view_rules}</button>
-                <button class="btn btn-sm" onclick="fwToggleVm(${g.vmid},'${g.type}',${toggleNext})" style="padding:2px 6px;font-size:.55rem;min-width:32px;color:${toggleColor};border-color:${toggleColor}">${toggleLabel}</button>
+                <button class="btn btn-sm" onclick="fwViewVmRules(${g.vmid},'${escapeJsArg(g.type)}','${escapeJsArg(g.name)}')" style="padding:2px 8px;font-size:.55rem">${T.fw_view_rules}</button>
+                <button class="btn btn-sm" onclick="fwToggleVm(${g.vmid},'${escapeJsArg(g.type)}',${toggleNext})" style="padding:2px 6px;font-size:.55rem;min-width:32px;color:${toggleColor};border-color:${toggleColor}">${toggleLabel}</button>
             </td>
         </tr>`;
     });
@@ -245,11 +245,11 @@ async function fwViewVmRules(vmid, type, name) {
             const ac = r.action === 'ACCEPT' ? 'var(--green)' : 'var(--red)';
             html += `<tr style="border-bottom:1px solid var(--border-subtle)">
                 <td style="padding:4px 8px;color:var(--text3)">${r.pos ?? ''}</td>
-                <td style="padding:4px 8px;color:${ac};font-weight:600">${r.action}</td>
-                <td style="padding:4px 8px;font-family:var(--mono)">${r.dport || (r.macro ? '—' : '*')}</td>
-                <td style="padding:4px 8px">${r.macro || r.proto || ''}</td>
-                <td style="padding:4px 8px;font-family:var(--mono)">${r.source || '*'}</td>
-                <td style="padding:4px 8px;color:var(--text3)">${r.comment || ''}</td>
+                <td style="padding:4px 8px;color:${ac};font-weight:600">${escapeHtml(r.action)}</td>
+                <td style="padding:4px 8px;font-family:var(--mono)">${escapeHtml(r.dport || (r.macro ? '—' : '*'))}</td>
+                <td style="padding:4px 8px">${escapeHtml(r.macro || r.proto || '')}</td>
+                <td style="padding:4px 8px;font-family:var(--mono)">${escapeHtml(r.source || '*')}</td>
+                <td style="padding:4px 8px;color:var(--text3)">${escapeHtml(r.comment || '')}</td>
                 <td style="padding:4px 8px;text-align:right">
                     <button class="btn btn-sm btn-red" onclick="fwVmDeleteRule(${r.pos})" style="padding:1px 5px;font-size:.5rem" title="${T.sec_delete_rule}">\u2715</button>
                 </td>
@@ -318,10 +318,10 @@ function fwbAddRow(rule) {
     row.innerHTML = `
         <select class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="action"><option ${r.action==='ACCEPT'?'selected':''}>ACCEPT</option><option ${r.action==='DROP'?'selected':''}>DROP</option><option ${r.action==='REJECT'?'selected':''}>REJECT</option></select>
         <select class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="type"><option value="in" ${r.type==='in'?'selected':''}>IN</option><option value="out" ${r.type==='out'?'selected':''}>OUT</option></select>
-        <input class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="dport" placeholder="Port" value="${r.dport||''}">
+        <input class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="dport" placeholder="Port" value="${escapeHtml(r.dport||'')}">
         <select class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="proto"><option value="tcp" ${r.proto==='tcp'?'selected':''}>TCP</option><option value="udp" ${r.proto==='udp'?'selected':''}>UDP</option></select>
-        <input class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="source" placeholder="Source" value="${r.source||''}">
-        <input class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="comment" placeholder="Comment" value="${r.comment||''}">
+        <input class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="source" placeholder="Source" value="${escapeHtml(r.source||'')}">
+        <input class="form-input" style="font-size:.65rem;padding:3px 4px" data-f="comment" placeholder="Comment" value="${escapeHtml(r.comment||'')}">
         <button class="btn btn-sm btn-red" onclick="this.parentElement.remove()" style="padding:1px 4px;font-size:.5rem;line-height:1">\u2715</button>`;
     document.getElementById('fwbRules').appendChild(row);
 }

@@ -237,6 +237,73 @@ function wgParseRouteNetworks(string $raw): array
     return array_keys($routes);
 }
 
+// ── Strenge Eingabe-Validierung für WireGuard-Felder ─────────────────
+// Diese Prüfungen schließen zwei Lücken: (1) Command-Injection in den
+// `wg set`-Aufrufen, die direkt mit shell_exec liefen, und (2) Config-
+// Injection — ein in einem Feld eingeschmuggeltes Newline schreibt sonst
+// eine zusätzliche Zeile (z.B. `PostUp = /bin/bash …`) in die .conf, die
+// wg-quick beim Start als ROOT ausführt. Anchor `\A…\z` statt `^…$`, damit
+// ein abschließendes "\n" nicht durchrutscht.
+
+// WireGuard-Schlüssel: base64-kodierter 32-Byte-Wert = 43 Zeichen + '='.
+function wgValidKey(string $k): bool {
+    return (bool)preg_match('#\A[A-Za-z0-9+/]{43}=\z#', trim($k));
+}
+
+// Einzelnes IPv4/IPv6-CIDR; Host-Teil muss eine gültige IP sein.
+function wgValidCidr(string $item): bool {
+    $item = trim($item);
+    if ($item === '' || preg_match('/\s/', $item)) return false;
+    $parts = explode('/', $item, 2);
+    if (filter_var($parts[0], FILTER_VALIDATE_IP) === false) return false;
+    if (isset($parts[1]) && !preg_match('/\A\d{1,3}\z/', $parts[1])) return false;
+    return true;
+}
+
+// Komma-getrennte CIDR-Liste (AllowedIPs / Address).
+function wgValidCidrList(string $s): bool {
+    $s = trim($s);
+    if ($s === '') return false;
+    foreach (preg_split('/\s*,\s*/', $s) as $item) {
+        if (!wgValidCidr($item)) return false;
+    }
+    return true;
+}
+
+// Endpoint host:port — host = IPv4, [IPv6] oder DNS-Name.
+function wgValidEndpoint(string $s): bool {
+    $s = trim($s);
+    if (preg_match('#\A\[[0-9a-fA-F:]+\]:\d{1,5}\z#', $s)) return true;
+    return (bool)preg_match('#\A[A-Za-z0-9.\-_]+:\d{1,5}\z#', $s);
+}
+
+// Verbietet Steuerzeichen (CR/LF), die Config-Zeilen einschmuggeln könnten.
+function wgHasCtrl(string $s): bool {
+    return preg_match('/[\r\n]/', $s) === 1;
+}
+
+// `wg set …` ohne Shell ausführen (argv-basiert via sudo). Schließt die
+// Command-Injection in wg-add-peer / wg-remove-peer endgültig: selbst wenn
+// eine Validierung künftig gelockert wird, gibt es keinen Shell-Parser mehr.
+function wgRunWgSet(array $args): string {
+    $wg = findExecutable(['/usr/bin/wg', '/usr/local/bin/wg']);
+    $sudo = findExecutable(['/usr/bin/sudo', '/bin/sudo']);
+    if ($wg === null || $sudo === null) return '';
+    $proc = proc_open(
+        array_merge([$sudo, '-n', $wg, 'set'], $args),
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes
+    );
+    if (!is_resource($proc)) return '';
+    fclose($pipes[0]);
+    $out = trim((string)stream_get_contents($pipes[1]));
+    $err = trim((string)stream_get_contents($pipes[2]));
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($proc);
+    return trim($out . "\n" . $err);
+}
+
 function wgIsPrivateIpv4Cidr(string $cidr): bool
 {
     $ip = explode('/', $cidr, 2)[0] ?? '';
@@ -586,6 +653,23 @@ function handleWireguardAPI(string $action): bool {
 
         if (!$iface || !$address || !$privateKey || !$peerPublicKey) {
             echo json_encode(['ok' => false, 'error' => 'Interface, Adresse, Private Key und Peer Public Key erforderlich']);
+            return true;
+        }
+
+        // Felder validieren, bevor sie in die .conf geschrieben werden — sonst
+        // kann ein Newline eine PostUp-Zeile einschmuggeln, die als root läuft.
+        if (!wgValidKey($privateKey) || !wgValidKey($peerPublicKey)
+            || ($peerPsk !== '' && !wgValidKey($peerPsk))) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger WireGuard-Schlüssel']);
+            return true;
+        }
+        if (!wgValidCidrList($address)
+            || ($peerAllowedIps !== '' && !wgValidCidrList($peerAllowedIps))) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültige IP-/CIDR-Angabe']);
+            return true;
+        }
+        if ($peerEndpoint !== '' && !wgValidEndpoint($peerEndpoint)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger Endpoint (erwartet host:port)']);
             return true;
         }
 
@@ -958,7 +1042,8 @@ function handleWireguardAPI(string $action): bool {
         $peerPsk = trim($_POST['psk'] ?? '');
         $keepalive = (int)($_POST['keepalive'] ?? 25);
         $peerEndpoint = trim($_POST['endpoint'] ?? '');
-        $peerName = trim(preg_replace('/[^\w\s\-\.\(\)]/', '', $_POST['peer_name'] ?? ''));
+        // \s in der Klasse [^\w\s…] würde Newlines durchlassen → explizit entfernen.
+        $peerName = trim(preg_replace('/[\r\n]+/', ' ', preg_replace('/[^\w\s\-\.\(\)]/', '', $_POST['peer_name'] ?? '')));
         $clientPrivateKey = trim($_POST['client_private_key'] ?? '');
         $clientAddress = trim($_POST['client_address'] ?? '');
         $clientDns = trim($_POST['client_dns'] ?? '');
@@ -968,6 +1053,25 @@ function handleWireguardAPI(string $action): bool {
         if (!$iface || !$peerPubKey || !$peerAllowedIps) {
             echo json_encode(['ok' => false, 'error' => 'Interface, Public Key und Allowed IPs erforderlich']);
             return true;
+        }
+
+        // Server-seitige Felder, die in [Peer] geschrieben und an `wg set`
+        // übergeben werden, streng validieren (Config- + Command-Injection).
+        if (!wgValidKey($peerPubKey) || ($peerPsk !== '' && !wgValidKey($peerPsk))) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger WireGuard-Schlüssel']);
+            return true;
+        }
+        if (!wgValidCidrList($peerAllowedIps)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültige Allowed IPs']);
+            return true;
+        }
+        // Die Client-Meta-Felder landen als Kommentarzeilen in der .conf;
+        // ein eingeschmuggeltes Newline würde daraus echte Direktiven machen.
+        foreach ([$clientPrivateKey, $clientAddress, $clientDns, $clientAllowedIps, $clientEndpoint] as $clientField) {
+            if (wgHasCtrl($clientField)) {
+                echo json_encode(['ok' => false, 'error' => 'Ungültiges Zeichen in Client-Daten']);
+                return true;
+            }
         }
 
         $path = "/etc/wireguard/$iface.conf";
@@ -1004,19 +1108,24 @@ function handleWireguardAPI(string $action): bool {
             return true;
         }
 
-        // If interface is running, add peer live via wg set
+        // If interface is running, add peer live via wg set (shell-free argv).
         $isActive = trim(shell_exec("systemctl is-active wg-quick@$iface 2>/dev/null") ?? '') === 'active';
         if ($isActive) {
-            $cmd = "sudo wg set $iface peer $peerPubKey allowed-ips $peerAllowedIps";
+            $args = [$iface, 'peer', $peerPubKey, 'allowed-ips', $peerAllowedIps];
+            $tmpPsk = null;
             if ($peerPsk) {
                 // PSK must be passed via file
                 $tmpPsk = tempnam('/tmp', 'wgpsk_');
                 file_put_contents($tmpPsk, $peerPsk);
-                $cmd .= " preshared-key $tmpPsk";
+                $args[] = 'preshared-key';
+                $args[] = $tmpPsk;
             }
-            if ($keepalive > 0) $cmd .= " persistent-keepalive $keepalive";
-            shell_exec("$cmd 2>&1");
-            if (isset($tmpPsk)) unlink($tmpPsk);
+            if ($keepalive > 0) {
+                $args[] = 'persistent-keepalive';
+                $args[] = (string)$keepalive;
+            }
+            wgRunWgSet($args);
+            if ($tmpPsk !== null) unlink($tmpPsk);
         }
 
         echo json_encode(['ok' => true, 'live' => $isActive]);
@@ -1028,7 +1137,7 @@ function handleWireguardAPI(string $action): bool {
         csrf_check();
         $iface = preg_replace('/[^a-zA-Z0-9]/', '', $_POST['iface'] ?? '');
         $pubKey = trim($_POST['public_key'] ?? '');
-        $name = trim(preg_replace('/[^\w\s\-\.\(\)]/', '', $_POST['name'] ?? ''));
+        $name = trim(preg_replace('/[\r\n]+/', ' ', preg_replace('/[^\w\s\-\.\(\)]/', '', $_POST['name'] ?? '')));
         $endpoint = trim($_POST['endpoint'] ?? '');
         $keepalive = (int)($_POST['keepalive'] ?? 25);
         $allowedIps = trim($_POST['allowed_ips'] ?? '');
@@ -1036,6 +1145,20 @@ function handleWireguardAPI(string $action): bool {
 
         if (!$iface || !$pubKey || !$allowedIps) {
             echo json_encode(['ok' => false, 'error' => 'Interface, Public Key und AllowedIPs erforderlich']);
+            return true;
+        }
+
+        // Felder validieren, bevor sie in die .conf geschrieben werden.
+        if (!wgValidKey($pubKey) || ($psk !== '' && !wgValidKey($psk))) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger WireGuard-Schlüssel']);
+            return true;
+        }
+        if (!wgValidCidrList($allowedIps)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültige AllowedIPs']);
+            return true;
+        }
+        if ($endpoint !== '' && !wgValidEndpoint($endpoint)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger Endpoint (erwartet host:port)']);
             return true;
         }
 
@@ -1097,6 +1220,10 @@ function handleWireguardAPI(string $action): bool {
             echo json_encode(['ok' => false, 'error' => 'Interface und Public Key erforderlich']);
             return true;
         }
+        if (!wgValidKey($peerPubKey)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger WireGuard-Schlüssel']);
+            return true;
+        }
 
         $path = "/etc/wireguard/$iface.conf";
         if (!file_exists($path)) {
@@ -1154,7 +1281,7 @@ function handleWireguardAPI(string $action): bool {
         // Remove peer live if interface is running
         $isActive = trim(shell_exec("systemctl is-active wg-quick@$iface 2>/dev/null") ?? '') === 'active';
         if ($isActive) {
-            shell_exec("sudo wg set $iface peer $peerPubKey remove 2>&1");
+            wgRunWgSet([$iface, 'peer', $peerPubKey, 'remove']);
         }
 
         echo json_encode(['ok' => true, 'live' => $isActive]);

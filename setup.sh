@@ -417,6 +417,8 @@ fi
 if [[ -d "$SCRIPT_DIR/helpers" ]] && [[ -f "$SCRIPT_DIR/helpers/pam_auth.py" ]]; then
     mkdir -p "$INSTALL_DIR/helpers"
     cp "$SCRIPT_DIR/helpers/pam_auth.py" "$INSTALL_DIR/helpers/pam_auth.py"
+    # sudoers-rules.sh wird von update.sh (Self-Update) aus INSTALL_DIR gesourct.
+    [[ -f "$SCRIPT_DIR/helpers/sudoers-rules.sh" ]] && cp "$SCRIPT_DIR/helpers/sudoers-rules.sh" "$INSTALL_DIR/helpers/sudoers-rules.sh"
     ok "helpers/pam_auth.py $(L copied)"
 else
     die "helpers/pam_auth.py $(L not_found_in) $SCRIPT_DIR/helpers"
@@ -742,82 +744,9 @@ ok "$(L nginx_reloaded)"
 
 step "$(L step_sudoers)"
 
-{
-echo "# FloppyOps Lite Panel"
-if [[ "$MOD_FAIL2BAN" == "true" ]]; then
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/fail2ban-client status *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/fail2ban-client status"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/fail2ban-client set * unbanip *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/tail -* /var/log/fail2ban.log"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl restart fail2ban"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl is-active fail2ban"
-fi
-if [[ "$MOD_NGINX" == "true" ]]; then
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/certbot *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -L POSTROUTING -n"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -C POSTROUTING -s * -o * -j MASQUERADE"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -A POSTROUTING -s * -o * -j MASQUERADE"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-available/*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/nginx_* /etc/nginx/sites-enabled/*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/ln -sf /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/nginx/sites-available/*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/nginx/sites-enabled/*"
-fi
-if [[ "$MOD_WIREGUARD" == "true" ]]; then
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/wg show *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/wg genkey"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/wg pubkey"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/wg genpsk"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/wgconf_* /etc/wireguard/*"
-    echo "www-data ALL=(root) NOPASSWD: /bin/chmod 0640 /etc/wireguard/*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/chown root\\:www-data /etc/wireguard/*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/wireguard/*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl start wg-quick@*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl stop wg-quick@*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl restart wg-quick@*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl enable wg-quick@*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl disable wg-quick@*"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl is-active wg-quick@*"
-fi
-if [[ "$MOD_ZFS" == "true" ]]; then
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zfs list *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zfs snapshot *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zfs destroy *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zfs rollback *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zfs clone *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zfs set *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zfs get *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/sbin/zpool list *"
-    echo "www-data ALL=(root) NOPASSWD: /usr/bin/apt-get install -y zfs-auto-snapshot"
-fi
-# Security Check (PVE Firewall via pvesh)
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/pvesh get *"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/pvesh set *"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/pvesh create *"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/pvesh delete *"
-echo "www-data ALL=(root) NOPASSWD: /usr/sbin/pct list"
-echo "www-data ALL=(root) NOPASSWD: /usr/sbin/pct config *"
-echo "www-data ALL=(root) NOPASSWD: /usr/sbin/pct exec *"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/ss -tlnpH"
-# Self-Update + System Updates
-echo "www-data ALL=(root) NOPASSWD: /usr/local/libexec/floppyops-lite/pam_auth.py --user *"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl list-units --type=service --all php*-fpm.service --no-legend"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload php*-fpm.service"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/systemctl restart php*-fpm.service"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/floppyops-lite_repo_* /etc/apt/sources.list.d/*"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/cp /tmp/floppyops-lite_file_* /etc/cron.d/*"
-echo "www-data ALL=(root) NOPASSWD: /bin/chmod 0644 /etc/cron.d/floppyops-lite-update"
-echo "www-data ALL=(root) NOPASSWD: /bin/chmod 0644 /etc/cron.d/floppyops-lite-app-update"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.d/floppyops-lite-update"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.d/floppyops-lite-app-update"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.daily/floppyops-lite-update"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/cron.daily/floppyops-lite-app-update"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/apt-get update"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/apt-get dist-upgrade *"
-echo "www-data ALL=(root) NOPASSWD: /usr/bin/apt-get autoremove *"
-} > /etc/sudoers.d/server-admin
+# sudoers aus gemeinsamer Quelle erzeugen (identisch zu update.sh, keine Drift).
+source "$SCRIPT_DIR/helpers/sudoers-rules.sh"
+emit_sudoers_rules > /etc/sudoers.d/server-admin
 chmod 440 /etc/sudoers.d/server-admin
 visudo -cf /etc/sudoers.d/server-admin >/dev/null || die "Sudoers-Regeln fehlerhaft"
 ok "$(L sudoers_created)"

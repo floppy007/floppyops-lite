@@ -38,6 +38,15 @@ When you rent a dedicated server with Proxmox VE, too many routine tasks still f
 
 FloppyOps Lite gives you a direct, self-hosted control surface for exactly those jobs, without adding an external SaaS layer or cluster management complexity.
 
+## What's new in v1.3.1?
+
+Security-audit follow-up: every finding fixed and re-verified. Read the [CHANGELOG](CHANGELOG.md) for details.
+
+- **Command/config injection closed in WireGuard.** Live peer changes (`wg set`) no longer go through a shell, and every field written into a tunnel `.conf` is type-validated and CR/LF-rejected, so an authenticated non-root user can no longer smuggle a root `PostUp`.
+- **nginx reverse-proxy editing is validated.** `ip`/`port`/`domain` inputs can no longer inject nginx directives (e.g. `alias /;` for arbitrary file read).
+- **XSS closed across the UI.** All attacker-influenceable server data (log lines, peer/VM names, IPs, cert fields, the `Host` header) is HTML-escaped before rendering.
+- **sudo allowlist tightened to least privilege.** Catch-all rules (`cp *`, `chmod *`, `chown *`, `iptables *`, `pvesh *`, `cat /etc/pve/*`) that allowed a trivial `www-data` → root escape are replaced with rules scoped to the exact commands the panel runs. `setup.sh` generates the hardened ruleset for fresh installs.
+
 ## What's new in v1.3.0?
 
 This is a **security release** with breaking auth changes. Read the [CHANGELOG](CHANGELOG.md) before upgrading.
@@ -232,7 +241,7 @@ bash setup.sh --domain admin.example.com
 | **Custom domain** | `https://admin.example.com` (if `--domain` was used) |
 | **PVE Toolbar** | Click the FloppyOps button in your PVE web interface |
 
-Login with a **PVE user holding the Administrator role** (Sys.Modify + Sys.PowerMgmt on `/`) or a **Linux user that is root or in the `sudo`/`wheel` group**. The panel verifies the authorization rights after login, the same way PVE itself does — a valid ticket alone is not sufficient.
+Login with a **PVE user holding the Administrator role** (Sys.Modify + Sys.PowerMgmt on `/`) or a **Linux user that is root or in the `sudo`/`wheel` group**. The panel verifies the authorization rights after login, the same way PVE itself does. A valid ticket alone is not sufficient.
 
 ### Setup Options
 
@@ -258,6 +267,8 @@ bash update.sh
 - `config.php` and `data/` are preserved
 - For Git-based installs, the worktree must be clean
 - The in-app update button uses the same `update.sh` backend
+
+> **Upgrading from a version before v1.3.1:** that first update is still driven by your *old* `update.sh`, which only appends sudoers rules. To fully apply the hardened ruleset (remove old `cp */chmod */pvesh *` catch-alls, add the new scoped rules), run `bash update.sh` once more afterwards, or run `sudo bash setup.sh` once. From v1.3.1 onward a single `update.sh` regenerates `/etc/sudoers.d/server-admin` completely. Versions before v1.2.1 predate `update.sh`: run `sudo bash setup.sh` once, then `update.sh` works. See [RELEASE_NOTES.md](RELEASE_NOTES.md#upgrade--update).
 
 ## Architecture
 
@@ -295,8 +306,8 @@ data/               → Runtime state (gitignored, 0750 www-data)
 config.php          → Credentials + settings (not in Git, 0640 root:www-data)
 config.example.php  → Template for config.php
 lang.php            → Translations (DE/EN)
-setup.sh            → Automated setup script — writes /etc/sudoers.d/server-admin
-update.sh           → Update script — also refreshes sudoers + security headers
+setup.sh            → Automated setup script, writes /etc/sudoers.d/server-admin
+update.sh           → Update script, also refreshes sudoers + security headers
 ```
 
 Modular PHP app - no framework, no database, no external dependencies (except Chart.js for the traffic graph).
@@ -402,7 +413,7 @@ bash setup.sh --domain admin.example.com
 | **Eigene Domain** | `https://admin.example.com` (wenn `--domain` gesetzt) |
 | **PVE-Toolbar** | FloppyOps-Button in der PVE-Weboberfläche |
 
-Login mit einem **PVE-Benutzer mit Administrator-Rolle** (Sys.Modify + Sys.PowerMgmt auf `/`) oder einem **Linux-User der root ist oder in der `sudo`/`wheel`-Gruppe**. Das Panel prüft die Autorisierung nach dem Login, genau wie PVE selbst — ein gültiges Ticket allein reicht nicht.
+Login mit einem **PVE-Benutzer mit Administrator-Rolle** (Sys.Modify + Sys.PowerMgmt auf `/`) oder einem **Linux-User der root ist oder in der `sudo`/`wheel`-Gruppe**. Das Panel prüft die Autorisierung nach dem Login, genau wie PVE selbst. Ein gültiges Ticket allein reicht nicht.
 
 ### Setup-Optionen
 
@@ -428,6 +439,8 @@ bash update.sh
 - `config.php` und `data/` bleiben erhalten
 - Bei Git-Installationen muss der Worktree sauber sein
 - Der In-App-Update-Button nutzt denselben `update.sh`-Backend-Pfad
+
+> **Upgrade von einer Version VOR v1.3.1:** Das erste Update wird noch von deiner *alten* `update.sh` gesteuert, die sudoers-Regeln nur ergänzt. Damit das gehärtete Regelwerk vollständig greift (alte `cp */chmod */pvesh *`-Catch-alls entfernen, neue scoped Rules ergänzen), danach einmal zusätzlich `bash update.sh` ausführen, oder einmalig `sudo bash setup.sh`. Ab v1.3.1 genügt **ein** `update.sh`-Lauf: `/etc/sudoers.d/server-admin` wird komplett neu generiert. Versionen vor v1.2.1 haben noch kein `update.sh`: einmal `sudo bash setup.sh`, danach läuft `update.sh`. Siehe [RELEASE_NOTES.md](RELEASE_NOTES.md#upgrade--update).
 
 ---
 

@@ -423,12 +423,12 @@ function handleNginxAPI(string $action): bool {
             return true;
         }
         foreach ($domains as $d) {
-            if (!preg_match('/^[a-zA-Z0-9.*-]+\.[a-zA-Z]{2,}$/', $d)) {
+            if (!preg_match('/\A[a-zA-Z0-9.*-]+\.[a-zA-Z]{2,}\z/', $d)) {
                 echo json_encode(['ok' => false, 'error' => "Ungültiger Domain-Name: $d"]);
                 return true;
             }
         }
-        if (!preg_match('/^https?:\/\/[\d.:]+$/', $target)) {
+        if (!preg_match('/\Ahttps?:\/\/[\d.:]+\z/', $target)) {
             echo json_encode(['ok' => false, 'error' => 'Ungültiges Ziel (z.B. http://10.10.10.100:80)']);
             return true;
         }
@@ -488,26 +488,85 @@ function handleNginxAPI(string $action): bool {
             }
         }
 
+        $steps = [];
+        $steps[] = ['id' => 'config', 'label' => 'Nginx-Config geschrieben', 'ok' => true, 'output' => "$availPath\n(symlink: $enablePath)"];
+
         // Test config
-        $test = shell_exec('sudo nginx -t 2>&1');
-        if (strpos($test, 'successful') === false) {
-            unlink($enablePath);
-            unlink($availPath);
-            echo json_encode(['ok' => false, 'error' => 'Nginx-Config ungueltig: ' . $test]);
+        $test = shell_exec('sudo nginx -t 2>&1') ?? '';
+        $testOk = strpos($test, 'successful') !== false;
+        $steps[] = ['id' => 'nginx-test', 'label' => 'nginx -t (Syntax-Check)', 'ok' => $testOk, 'output' => trim($test)];
+        if (!$testOk) {
+            @unlink($enablePath);
+            @unlink($availPath);
+            echo json_encode(['ok' => false, 'error' => 'Nginx-Config ungültig', 'steps' => $steps]);
             return true;
         }
 
-        shell_exec('sudo systemctl reload nginx 2>&1');
+        $reloadOut = shell_exec('sudo systemctl reload nginx 2>&1') ?? '';
+        $steps[] = ['id' => 'nginx-reload', 'label' => 'Nginx Reload', 'ok' => true, 'output' => trim($reloadOut) ?: 'OK'];
+
+        // Pre-flight DNS check: do domains point to this server?
+        $serverIps = [];
+        foreach (preg_split('/\s+/', trim(shell_exec('hostname -I 2>/dev/null') ?? '')) as $ip) { if ($ip) $serverIps[] = $ip; }
+        foreach (preg_split('/\s+/', trim(shell_exec("ip -6 addr show scope global 2>/dev/null | grep -oP 'inet6 \\K[^/]+'") ?? '')) as $ip) { if ($ip) $serverIps[] = $ip; }
+
+        $dnsLines = [];
+        $dnsAllMatch = true;
+        $dnsAnyResolves = false;
+        foreach ($domains as $d) {
+            if (str_starts_with($d, '*.')) { $dnsLines[] = "$d → Wildcard (skip)"; continue; }
+            $a   = array_filter(array_map('trim', explode("\n", shell_exec('dig +short A '   . escapeshellarg($d) . ' 2>/dev/null') ?? '')));
+            $aaa = array_filter(array_map('trim', explode("\n", shell_exec('dig +short AAAA ' . escapeshellarg($d) . ' 2>/dev/null') ?? '')));
+            $hasAny = !empty($a) || !empty($aaa);
+            if ($hasAny) $dnsAnyResolves = true;
+            $matchA = false; foreach ($a   as $ip) if (in_array($ip, $serverIps, true)) { $matchA = true; break; }
+            $matchV = false; foreach ($aaa as $ip) if (in_array($ip, $serverIps, true)) { $matchV = true; break; }
+            $matches = $matchA || $matchV;
+            if ($hasAny && !$matches) $dnsAllMatch = false;
+            $dnsLines[] = "$d → A: " . (empty($a) ? '—' : implode(',', $a)) . '  AAAA: ' . (empty($aaa) ? '—' : implode(',', $aaa)) . '  ' . ($matches ? '✓ Match' : ($hasAny ? '✗ Zeigt nicht auf diesen Server' : '✗ Keine DNS-Antwort'));
+        }
+        $dnsHeader = "Server-IPs: " . implode(', ', $serverIps) . "\n\n" . implode("\n", $dnsLines);
+        $steps[] = [
+            'id' => 'dns-precheck',
+            'label' => 'DNS Pre-Flight Check',
+            'ok' => $dnsAllMatch && $dnsAnyResolves,
+            'warn' => !$dnsAllMatch,
+            'output' => $dnsHeader,
+        ];
 
         // Optionally run certbot for all domains
-        $sslMsg = '';
         if ($withSsl) {
-            $certArgs = implode(' ', array_map(fn($d) => '-d ' . escapeshellarg($d), $domains));
-            $certOut = shell_exec("sudo certbot --nginx $certArgs --non-interactive --agree-tos --register-unsafely-without-email 2>&1");
-            $sslMsg = (str_contains($certOut, 'Successfully') || str_contains($certOut, 'Congratulations')) ? ' + SSL aktiviert' : ' (SSL fehlgeschlagen)';
+            if (!$dnsAllMatch) {
+                $steps[] = [
+                    'id' => 'cert-acquire',
+                    'label' => 'Let\'s Encrypt Zertifikat',
+                    'ok' => false,
+                    'skipped' => true,
+                    'output' => "Übersprungen: DNS zeigt nicht auf diesen Server.\nLet's Encrypt HTTP-01 Challenge würde fehlschlagen.\n\nLösung:\n  • DNS A/AAAA Record auf eine Server-IP zeigen\n  • Oder: Cloudflare-Proxy temporär deaktivieren (orange Wolke → grau)\n  • Anschließend: Edit → SSL erneuern",
+                ];
+            } else {
+                $certArgs = implode(' ', array_map(fn($d) => '-d ' . escapeshellarg($d), $domains));
+                $certOut = shell_exec("sudo certbot --nginx $certArgs --non-interactive --agree-tos --register-unsafely-without-email 2>&1") ?? '';
+                $certOk = str_contains($certOut, 'Successfully') || str_contains($certOut, 'Congratulations');
+                $steps[] = ['id' => 'cert-acquire', 'label' => 'Let\'s Encrypt Zertifikat', 'ok' => $certOk, 'output' => trim($certOut)];
+
+                // Verify cert is actually served
+                if ($certOk) {
+                    $mainDomain = $domains[0];
+                    $verify = shell_exec("echo | openssl s_client -servername " . escapeshellarg($mainDomain) . " -connect 127.0.0.1:443 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName 2>/dev/null") ?? '';
+                    $verifyOk = false;
+                    foreach ($domains as $d) {
+                        if (preg_match('/DNS:' . preg_quote($d, '/') . '\b/', $verify)) { $verifyOk = true; break; }
+                    }
+                    $steps[] = ['id' => 'cert-verify', 'label' => 'Zertifikat-Auslieferung verifiziert', 'ok' => $verifyOk, 'output' => trim($verify) ?: 'Kein Output'];
+                }
+            }
         }
 
-        echo json_encode(['ok' => true, 'message' => "Site " . $domains[0] . " erstellt" . $sslMsg]);
+        $overall = true;
+        foreach ($steps as $s) { if (!($s['ok'] ?? false) && empty($s['warn']) && empty($s['skipped'])) { $overall = false; break; } }
+        // SSL skip should not fail overall — site is still created
+        echo json_encode(['ok' => $overall, 'message' => "Site " . $domains[0] . " erstellt", 'steps' => $steps]);
         return true;
     }
 
@@ -529,6 +588,34 @@ function handleNginxAPI(string $action): bool {
         }
 
         $domains = array_filter(array_map('trim', preg_split('/[\s,]+/', $domainsRaw)));
+
+        // Werte validieren, bevor sie in die nginx-Config interpoliert werden.
+        // Ohne Prüfung könnte ein Newline/Leerzeichen in $ip/$port/$domain
+        // beliebige Direktiven einschleusen (z.B. `alias /;` für Datei-Lesen
+        // oder ein internes proxy_pass). \A…\z statt ^…$ gegen Trailing-Newline.
+        foreach ($domains as $d) {
+            if (!preg_match('/\A[a-zA-Z0-9.*-]+\.[a-zA-Z]{2,}\z/', $d)) {
+                echo json_encode(['ok' => false, 'error' => 'Ungültiger Domainname: ' . $d]);
+                return true;
+            }
+        }
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false && !preg_match('/\A[a-zA-Z0-9.\-]+\z/', $ip)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültige Ziel-IP/Host']);
+            return true;
+        }
+        if (!preg_match('/\A\d{1,5}\z/', $port) || (int)$port < 1 || (int)$port > 65535) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger Port']);
+            return true;
+        }
+        if ($maxUpload !== '' && !preg_match('/\A\d{1,6}\z/', (string)$maxUpload)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültige Upload-Größe']);
+            return true;
+        }
+        if ($timeout !== '' && !preg_match('/\A\d{1,5}\z/', (string)$timeout)) {
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger Timeout']);
+            return true;
+        }
+
         $availPath = NGINX_SITES_AVAILABLE . "/$file";
         $enablePath = NGINX_SITES_DIR . "/$file";
         $targetPath = file_exists($availPath) ? $availPath : $enablePath;
@@ -705,7 +792,7 @@ function handleNginxAPI(string $action): bool {
     if ($action === 'nginx-renew' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         $domain = trim($_POST['domain'] ?? '');
-        if (!preg_match('/^[a-zA-Z0-9.*-]+\.[a-zA-Z]{2,}$/', $domain)) {
+        if (!preg_match('/\A[a-zA-Z0-9.*-]+\.[a-zA-Z]{2,}\z/', $domain)) {
             echo json_encode(['ok' => false, 'error' => 'Ungültiger Domain-Name']);
             return true;
         }
@@ -729,6 +816,39 @@ function handleNginxAPI(string $action): bool {
         foreach (preg_split('/\s+/', trim($ipRaw)) as $ip) { if ($ip) $serverIps[] = $ip; }
         $ip6Raw = shell_exec("ip -6 addr show scope global 2>/dev/null | grep -oP 'inet6 \\K[^/]+'") ?? '';
         foreach (preg_split('/\s+/', trim($ip6Raw)) as $ip) { if ($ip) $serverIps[] = $ip; }
+
+        // Known CDN/Proxy IP ranges (CIDR). Source: cloudflare.com/ips
+        $cdnRanges = [
+            'cloudflare' => [
+                // IPv4 (cloudflare.com/ips-v4)
+                '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+                '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+                '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+                '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+                // IPv6 (cloudflare.com/ips-v6)
+                '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32',
+                '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32', '2c0f:f098::/32',
+            ],
+        ];
+        $detectCdn = function(string $ip) use ($cdnRanges): ?string {
+            if (!$ip) return null;
+            $ipBin = @inet_pton($ip);
+            if ($ipBin === false) return null;
+            foreach ($cdnRanges as $name => $ranges) {
+                foreach ($ranges as $cidr) {
+                    [$net, $bits] = explode('/', $cidr);
+                    $netBin = @inet_pton($net);
+                    if ($netBin === false || strlen($netBin) !== strlen($ipBin)) continue;
+                    $bytes = intdiv((int)$bits, 8);
+                    $rem = (int)$bits % 8;
+                    if ($bytes > 0 && substr($ipBin, 0, $bytes) !== substr($netBin, 0, $bytes)) continue;
+                    if ($rem === 0) return $name;
+                    $mask = chr(0xFF << (8 - $rem) & 0xFF);
+                    if ((ord($ipBin[$bytes]) & ord($mask)) === (ord($netBin[$bytes]) & ord($mask))) return $name;
+                }
+            }
+            return null;
+        };
 
         $results = [];
         if (is_dir($dir)) {
@@ -770,16 +890,24 @@ function handleNginxAPI(string $action): bool {
 
                     // DNS A record
                     $dnsA = trim(shell_exec("dig +short A " . escapeshellarg($checkDomain) . " 2>/dev/null") ?? '');
-                    $dnsAIps = array_filter(explode("\n", $dnsA));
+                    $dnsAIps = array_map('trim', array_filter(explode("\n", $dnsA)));
                     $dnsAMatch = false;
-                    foreach ($dnsAIps as $ip) { if (in_array(trim($ip), $serverIps)) { $dnsAMatch = true; break; } }
+                    foreach ($dnsAIps as $ip) { if (in_array($ip, $serverIps, true)) { $dnsAMatch = true; break; } }
+                    $dnsACdn = null;
+                    if (!$dnsAMatch) {
+                        foreach ($dnsAIps as $ip) { $cdn = $detectCdn($ip); if ($cdn) { $dnsACdn = $cdn; break; } }
+                    }
 
                     // DNS AAAA record
                     $dnsAAAA = trim(shell_exec("dig +short AAAA " . escapeshellarg($checkDomain) . " 2>/dev/null") ?? '');
-                    $dnsAAAAIps = array_filter(explode("\n", $dnsAAAA));
+                    $dnsAAAAIps = array_map('trim', array_filter(explode("\n", $dnsAAAA)));
                     $dnsAAAAMatch = false;
                     $hasAAAA = !empty($dnsAAAAIps);
-                    foreach ($dnsAAAAIps as $ip) { if (in_array(trim($ip), $serverIps)) { $dnsAAAAMatch = true; break; } }
+                    foreach ($dnsAAAAIps as $ip) { if (in_array($ip, $serverIps, true)) { $dnsAAAAMatch = true; break; } }
+                    $dnsAAAACdn = null;
+                    if ($hasAAAA && !$dnsAAAAMatch) {
+                        foreach ($dnsAAAAIps as $ip) { $cdn = $detectCdn($ip); if ($cdn) { $dnsAAAACdn = $cdn; break; } }
+                    }
 
                     // Cert match
                     $certMatch = false;
@@ -805,8 +933,10 @@ function handleNginxAPI(string $action): bool {
                         'file' => $file,
                         'dns_a' => $dnsAMatch,
                         'dns_a_ip' => $dnsAIps[0] ?? '',
+                        'dns_a_cdn' => $dnsACdn,
                         'dns_aaaa' => $dnsAAAAMatch,
                         'dns_aaaa_ip' => $dnsAAAAIps[0] ?? '',
+                        'dns_aaaa_cdn' => $dnsAAAACdn,
                         'has_aaaa' => $hasAAAA,
                         'ssl_valid' => $certDaysLeft !== null && $certDaysLeft > 0,
                         'ssl_expiry' => $certExpiry,

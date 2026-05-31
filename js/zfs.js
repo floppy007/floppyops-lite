@@ -37,9 +37,9 @@ async function loadZfs() {
                 const barClass = cap > 85 ? 'red' : cap > 70 ? '' : 'green';
                 const hc = p.health === 'ONLINE' ? 'var(--green)' : 'var(--red)';
                 return '<div class="stat-card" style="flex:1;min-width:200px">' +
-                    '<div class="stat-label"><span class="indicator" style="background:' + hc + ';box-shadow:0 0 6px ' + hc + '"></span>' + p.name + '</div>' +
+                    '<div class="stat-label"><span class="indicator" style="background:' + hc + ';box-shadow:0 0 6px ' + hc + '"></span>' + escapeHtml(p.name) + '</div>' +
                     '<div class="stat-value">' + cap + '%</div>' +
-                    '<div class="stat-sub">' + fmtBytes(p.alloc) + ' / ' + fmtBytes(p.size) + ' &middot; ' + p.health + (p.frag !== '0' ? ' &middot; Frag: ' + p.frag + '%' : '') + '</div>' +
+                    '<div class="stat-sub">' + fmtBytes(p.alloc) + ' / ' + fmtBytes(p.size) + ' &middot; ' + escapeHtml(p.health) + (p.frag !== '0' ? ' &middot; Frag: ' + escapeHtml(p.frag) + '%' : '') + '</div>' +
                     '<div class="progress-wrap"><div class="progress-bar ' + barClass + '" style="width:' + cap + '%"></div></div>' +
                 '</div>';
             }).join('') + '</div>';
@@ -54,10 +54,10 @@ async function loadZfs() {
             const isSubvol = ds.name.includes('subvol-');
             const vmMatch = ds.name.match(/subvol-(\d+)-disk/);
             const vmLabel = vmMatch ? ' <span style="font-size:.58rem;padding:1px 5px;border-radius:3px;background:rgba(64,196,255,.08);color:var(--blue)">CT ' + vmMatch[1] + '</span>' : '';
-            return '<tr><td style="font-family:var(--mono);font-size:.75rem">' + ds.name + vmLabel + '</td>' +
+            return '<tr><td style="font-family:var(--mono);font-size:.75rem">' + escapeHtml(ds.name) + vmLabel + '</td>' +
                 '<td style="font-size:.75rem">' + fmtBytes(ds.used) + '</td>' +
                 '<td style="font-size:.75rem">' + fmtBytes(ds.avail) + '</td>' +
-                '<td style="font-size:.7rem;color:var(--text3)">' + (ds.mount || '-') + '</td>' +
+                '<td style="font-size:.7rem;color:var(--text3)">' + (ds.mount ? escapeHtml(ds.mount) : '-') + '</td>' +
                 '<td><div style="display:flex;align-items:center;gap:6px"><span style="font-family:var(--mono);font-size:.7rem;min-width:28px">' + p + '%</span><div class="progress-wrap" style="flex:1;margin:0"><div class="progress-bar ' + barClass + '" style="width:' + p + '%"></div></div></div></td></tr>';
         }).join('');
 
@@ -82,9 +82,9 @@ async function loadZfs() {
                 else if (c.label === 'weekly') timespan = c.keep + ' Wochen';
                 else if (c.label === 'monthly') timespan = c.keep + ' Monate';
                 autoHtml += '<tr>' +
-                    '<td style="font-size:.75rem;font-weight:500">' + desc + ' <span style="font-size:.58rem;color:var(--text3)">(' + c.label + ')</span></td>' +
+                    '<td style="font-size:.75rem;font-weight:500">' + escapeHtml(desc) + ' <span style="font-size:.58rem;color:var(--text3)">(' + escapeHtml(c.label) + ')</span></td>' +
                     '<td>' + (c.exists ? '<span class="tag tag-green" style="font-size:.46rem">Aktiv</span>' : '<span class="tag tag-muted" style="font-size:.46rem">Aus</span>') + '</td>' +
-                    '<td><input type="number" min="1" max="999" value="' + c.keep + '" style="width:60px;font-family:var(--mono);font-size:.72rem;padding:1px 4px;background:var(--surface);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text);text-align:center" onchange="zfsSetRetention(\'' + c.label + '\',this.value)" data-orig="' + c.keep + '"></td>' +
+                    '<td><input type="number" min="1" max="999" value="' + c.keep + '" style="width:60px;font-family:var(--mono);font-size:.72rem;padding:1px 4px;background:var(--surface);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text);text-align:center" onchange="zfsSetRetention(\'' + escapeJsArg(c.label) + '\',this.value)" data-orig="' + c.keep + '"></td>' +
                     '<td style="font-size:.72rem;color:var(--text3)">' + timespan + '</td>' +
                 '</tr>';
             });
@@ -98,8 +98,8 @@ async function loadZfs() {
                 const vmMatch = ds.name.match(/subvol-(\d+)/);
                 const label = vmMatch ? 'CT ' + vmMatch[1] : short;
                 autoHtml += '<label style="display:flex;align-items:center;gap:5px;padding:4px 8px;background:var(--surface);border:1px solid var(--border-subtle);border-radius:4px;cursor:pointer;font-size:.68rem">' +
-                    '<input type="checkbox" onchange="zfsToggleAuto(\'' + ds.name + '\',this.checked)" checked style="accent-color:var(--accent);width:13px;height:13px">' +
-                    '<span>' + label + '</span></label>';
+                    '<input type="checkbox" onchange="zfsToggleAuto(\'' + escapeJsArg(ds.name) + '\',this.checked)" checked style="accent-color:var(--accent);width:13px;height:13px">' +
+                    '<span>' + escapeHtml(label) + '</span></label>';
             });
             autoHtml += '</div>';
             autoBody.innerHTML = autoHtml;
@@ -112,7 +112,7 @@ async function loadZfs() {
         const dsNames = [...new Set(d.snapshots.map(s => s.dataset))];
         dsNames.forEach(n => {
             const short = n.includes('subvol-') ? n.match(/subvol-(\d+)/)?.[0] || n : n.split('/').pop();
-            filterSel.innerHTML += '<option value="' + n + '"' + (curFilter === n ? ' selected' : '') + '>' + short + '</option>';
+            filterSel.innerHTML += '<option value="' + escapeHtml(n) + '"' + (curFilter === n ? ' selected' : '') + '>' + escapeHtml(short) + '</option>';
         });
 
         zfsRenderSnaps();
@@ -170,8 +170,8 @@ function zfsRenderSnaps() {
         html += '<div style="background:var(--surface);border:1px solid var(--border-subtle);border-radius:8px;margin-bottom:8px;overflow:hidden">';
         html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border-subtle)">' +
             '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="flex-shrink:0"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>' +
-            '<span style="font-size:.78rem;font-weight:600">' + label + '</span>' +
-            (vmName ? '<span style="font-size:.68rem;color:var(--text2)">' + vmName + '</span>' : '') +
+            '<span style="font-size:.78rem;font-weight:600">' + escapeHtml(label) + '</span>' +
+            (vmName ? '<span style="font-size:.68rem;color:var(--text2)">' + escapeHtml(vmName) + '</span>' : '') +
             '<span style="font-size:.55rem;padding:1px 6px;border-radius:10px;background:rgba(255,255,255,.04);color:var(--text3);font-family:var(--mono)">' + items.length + '</span>' +
             '<span style="flex:1"></span>' +
             '<span style="font-size:.62rem;color:var(--text3);font-family:var(--mono)">' + fmtBytes(totalUsed) + '</span>' +
@@ -182,14 +182,14 @@ function zfsRenderSnaps() {
 
         items.forEach((s, si) => {
             const isAuto = s.snap.startsWith('zfs-auto-snap');
-            const esc = s.name.replace(/'/g, "\\'");
+            const esc = escapeJsArg(s.name);
             const hidden = hasMore && si >= SHOW_LAST;
             const snapShort = isAuto ? s.snap.replace('zfs-auto-snap_', '') : s.snap;
 
             html += '<tr' + (hidden ? ' class="zsg-hidden-' + groupId + '" style="display:none"' : '') + '>' +
-                '<td style="font-family:var(--mono);font-size:.65rem;padding:4px 12px;color:' + (isAuto ? 'var(--text3)' : 'var(--text2)') + '"><span style="color:var(--text3)">@</span>' + snapShort + '</td>' +
+                '<td style="font-family:var(--mono);font-size:.65rem;padding:4px 12px;color:' + (isAuto ? 'var(--text3)' : 'var(--text2)') + '"><span style="color:var(--text3)">@</span>' + escapeHtml(snapShort) + '</td>' +
                 '<td style="font-size:.62rem;color:var(--text3);width:65px">' + fmtBytes(s.used) + '</td>' +
-                '<td style="font-size:.6rem;color:var(--text3);width:100px">' + s.created + '</td>' +
+                '<td style="font-size:.6rem;color:var(--text3);width:100px">' + escapeHtml(s.created) + '</td>' +
                 '<td style="text-align:right;padding:2px 8px;width:80px"><div style="display:flex;gap:2px;justify-content:flex-end">' +
                     '<button class="btn btn-sm" onclick="zfsRollback(\'' + esc + '\')" title="Rollback" style="padding:1px 4px;font-size:.5rem"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>' +
                     (s.dataset.match(/subvol-|vm-|base-/) ?
@@ -244,7 +244,7 @@ function zfsCreateSnapModal() {
     const defaultName = 'manual-' + new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
     let body = '<div class="form-group"><label class="form-label">Dataset</label>' +
         '<select id="zfsSnapDs" class="form-input" style="font-size:.75rem">' +
-        ds.map(d => '<option value="' + d.name + '">' + d.name + '</option>').join('') +
+        ds.map(d => '<option value="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</option>').join('') +
         '</select></div>' +
         '<div class="form-group"><label class="form-label">Snapshot-Name</label>' +
         '<input class="form-input" id="zfsSnapName" value="' + defaultName + '" style="font-family:var(--mono);font-size:.75rem"></div>';
@@ -274,7 +274,7 @@ async function zfsDoSnap() {
 }
 
 async function zfsDeleteSnap(snap) {
-    if (!await appConfirm('Snapshot löschen', 'Snapshot <strong>' + snap.split('@')[1] + '</strong> löschen?')) return;
+    if (!await appConfirm('Snapshot löschen', 'Snapshot <strong>' + escapeHtml(snap.split('@')[1]) + '</strong> löschen?')) return;
     try {
         const res = await api('zfs-destroy-snap', 'POST', { snapshot: snap });
         if (res.ok) { toast('Snapshot gelöscht'); loadZfs(); }
@@ -284,7 +284,7 @@ async function zfsDeleteSnap(snap) {
 
 async function zfsRollback(snap) {
     const parts = snap.split('@');
-    if (!await appConfirm('Rollback', '<strong>ACHTUNG:</strong> Rollback auf <strong>' + parts[1] + '</strong>?<br><br>Alle neueren Snapshots werden gelöscht!<br>Dataset: <code>' + parts[0] + '</code>')) return;
+    if (!await appConfirm('Rollback', '<strong>ACHTUNG:</strong> Rollback auf <strong>' + escapeHtml(parts[1]) + '</strong>?<br><br>Alle neueren Snapshots werden gelöscht!<br>Dataset: <code>' + escapeHtml(parts[0]) + '</code>')) return;
     try {
         const res = await api('zfs-rollback', 'POST', { snapshot: snap });
         if (res.ok) { toast('Rollback erfolgreich auf ' + parts[1]); loadZfs(); }
@@ -342,11 +342,11 @@ async function zfsSnapCloneVm(snap) {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${isLxc ? 'var(--blue)' : '#a855f7'}" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
             </div>
             <div style="flex:1">
-                <div style="font-size:.82rem;font-weight:600">${srcName} <span style="font-size:.62rem;font-weight:400;color:var(--text3)">${typeLabel} ${sourceVmid}</span></div>
-                <div style="font-family:var(--mono);font-size:.6rem;color:var(--text3)">@${snapName}</div>
+                <div style="font-size:.82rem;font-weight:600">${escapeHtml(srcName)} <span style="font-size:.62rem;font-weight:400;color:var(--text3)">${typeLabel} ${sourceVmid}</span></div>
+                <div style="font-family:var(--mono);font-size:.6rem;color:var(--text3)">@${escapeHtml(snapName)}</div>
             </div>
         </div>
-        <input type="hidden" id="zscSnap" value="${snap}">
+        <input type="hidden" id="zscSnap" value="${escapeHtml(snap)}">
         <input type="hidden" id="zscType" value="${srcType}">
 
         <!-- Basics -->
@@ -357,7 +357,7 @@ async function zfsSnapCloneVm(snap) {
             </div>
             <div style="flex:2">
                 <label class="form-label">${isLxc ? 'Hostname' : 'Name'}</label>
-                <input class="form-input" id="zscName" value="${srcName}-clone">
+                <input class="form-input" id="zscName" value="${escapeHtml(srcName)}-clone">
             </div>
         </div>
 
@@ -399,32 +399,32 @@ async function zfsSnapCloneVm(snap) {
                 <div style="display:flex;gap:8px;margin-bottom:8px">
                     <div style="flex:2">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">IP-Adresse (CIDR)</label>
-                        <input class="form-input" id="zscIp" value="${srcIp}" placeholder="10.10.10.200/24" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                        <input class="form-input" id="zscIp" value="${escapeHtml(srcIp)}" placeholder="10.10.10.200/24" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
                     </div>
                     <div style="flex:1">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">Gateway</label>
-                        <input class="form-input" id="zscGw" value="${srcGw}" placeholder="10.10.10.1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                        <input class="form-input" id="zscGw" value="${escapeHtml(srcGw)}" placeholder="10.10.10.1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
                     </div>
                 </div>
                 <div style="font-size:.58rem;font-weight:600;color:var(--text3);margin-bottom:4px;margin-top:8px">IPv6</div>
                 <div style="display:flex;gap:8px;margin-bottom:8px">
                     <div style="flex:2">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">IPv6-Adresse (CIDR)</label>
-                        <input class="form-input" id="zscIp6" value="${srcIp6}" placeholder="2a01:4f9::100/64 oder dhcp" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                        <input class="form-input" id="zscIp6" value="${escapeHtml(srcIp6)}" placeholder="2a01:4f9::100/64 oder dhcp" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
                     </div>
                     <div style="flex:1">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">IPv6 Gateway</label>
-                        <input class="form-input" id="zscGw6" value="${srcGw6}" placeholder="fe80::1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                        <input class="form-input" id="zscGw6" value="${escapeHtml(srcGw6)}" placeholder="fe80::1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
                     </div>
                 </div>
                 <div style="display:flex;gap:8px">
                     <div style="flex:1">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">Bridge</label>
-                        <input class="form-input" id="zscBridge" value="${srcBridge}" placeholder="vmbr0" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                        <input class="form-input" id="zscBridge" value="${escapeHtml(srcBridge)}" placeholder="vmbr0" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
                     </div>
                     <div style="flex:1">
                         <label style="font-size:.62rem;color:var(--text3);display:block;margin-bottom:2px">DNS</label>
-                        <input class="form-input" id="zscDns" value="${srcDns}" placeholder="1.1.1.1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
+                        <input class="form-input" id="zscDns" value="${escapeHtml(srcDns)}" placeholder="1.1.1.1" style="padding:4px 8px;font-size:.72rem;font-family:var(--mono)" disabled>
                     </div>
                 </div>
             </div>

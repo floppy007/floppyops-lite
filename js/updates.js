@@ -72,12 +72,12 @@ async function loadUpdates() {
         const el = document.getElementById('appUpdateInfo');
         if (app.ok) {
             let html = '<div style="display:flex;flex-direction:column;gap:6px">';
-            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.installedLabel + ':</span><span style="font-family:var(--mono);font-weight:600">v' + app.local_version + '</span></div>';
-            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.availableLabel + ':</span><span style="font-family:var(--mono)">v' + app.remote_version + '</span></div>';
+            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.installedLabel + ':</span><span style="font-family:var(--mono);font-weight:600">v' + escapeHtml(app.local_version) + '</span></div>';
+            html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.availableLabel + ':</span><span style="font-family:var(--mono)">v' + escapeHtml(app.remote_version) + '</span></div>';
             html += '<div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">' + UPD_TEXT.methodLabel + ':</span><span>' + (app.is_git ? UPD_TEXT.methodGit : UPD_TEXT.methodDownload) + '</span></div>';
             if (app.update_available) {
                 html += '<div style="margin-top:6px;padding:8px 12px;background:rgba(64,196,255,.06);border:1px solid rgba(64,196,255,.15);border-radius:6px;display:flex;align-items:center;gap:8px">';
-                html += '<span style="color:var(--blue);font-weight:600">v' + app.remote_version + ' ' + UPD_TEXT.versionAvailable + '</span>';
+                html += '<span style="color:var(--blue);font-weight:600">v' + escapeHtml(app.remote_version) + ' ' + UPD_TEXT.versionAvailable + '</span>';
                 html += '<button class="btn btn-sm btn-accent" onclick="appUpdate(this)" style="margin-left:auto">Update</button></div>';
             } else {
                 html += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;color:var(--green);font-size:.72rem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ' + UPD_TEXT.current + '</div>';
@@ -178,19 +178,19 @@ async function loadUpdates() {
 
             let html = '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border-subtle)">';
             // Toggle
-            html += '<input type="checkbox" ' + (r.active ? 'checked' : '') + ' onchange="repoToggle(\'' + (r.file||'') + '\',this.checked,\'' + r.components + '\')" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0">';
+            html += '<input type="checkbox" ' + (r.active ? 'checked' : '') + ' onchange="repoToggle(\'' + escapeJsArg(r.file||'') + '\',this.checked,\'' + escapeJsArg(r.components) + '\')" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0">';
             // Info
             html += '<div style="flex:1;min-width:0">';
-            html += '<div style="font-size:.76rem;font-weight:600;display:flex;align-items:center;gap:6px">' + label;
+            html += '<div style="font-size:.76rem;font-weight:600;display:flex;align-items:center;gap:6px">' + escapeHtml(label);
             if (r._standard) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(255,89,0,.08);color:var(--accent)">' + T.updates_repo_pve_badge + '</span>';
             if (isEnt && !hasSub && r.active) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(220,53,69,.1);color:var(--red)">' + T.updates_repo_no_license + '</span>';
             if (isTest && r.active) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:rgba(255,193,7,.1);color:var(--yellow)">' + T.updates_repo_caution + '</span>';
             if (missing) html += ' <span style="font-size:.5rem;padding:1px 5px;border-radius:3px;background:var(--surface-solid);color:var(--text3)">' + T.updates_repo_missing + '</span>';
             html += '</div>';
-            if (desc) html += '<div style="font-size:.64rem;color:var(--text3)">' + desc + '</div>';
-            if (r.url && !missing) html += '<div style="font-family:var(--mono);font-size:.58rem;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + r.url + ' ' + r.suite + '</div>';
+            if (desc) html += '<div style="font-size:.64rem;color:var(--text3)">' + escapeHtml(desc) + '</div>';
+            if (r.url && !missing) html += '<div style="font-family:var(--mono);font-size:.58rem;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(r.url) + ' ' + escapeHtml(r.suite) + '</div>';
             html += '</div>';
-            if (r.file) html += '<span style="font-size:.54rem;color:var(--text3)">' + r.file + '</span>';
+            if (r.file) html += '<span style="font-size:.54rem;color:var(--text3)">' + escapeHtml(r.file) + '</span>';
             html += '</div>';
             return html;
         }

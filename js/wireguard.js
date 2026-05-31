@@ -212,19 +212,19 @@ async function loadWg() {
                     <div style="display:grid;grid-template-columns:100px 110px 140px 160px 70px 110px 160px auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border-subtle)">
                         <div>
                             <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Peer</div>
-                            <div style="font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.name || ''}">${p.name || '<span style="color:var(--text3)">---</span>'}</div>
+                            <div style="font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(p.name || '')}">${p.name ? escapeHtml(p.name) : '<span style="color:var(--text3)">---</span>'}</div>
                         </div>
                         <div>
                             <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">VPN IP</div>
-                            <div style="font-family:var(--mono);font-size:.78rem;color:var(--accent)">${vpnIp || '---'}</div>
+                            <div style="font-family:var(--mono);font-size:.78rem;color:var(--accent)">${vpnIp ? escapeHtml(vpnIp) : '---'}</div>
                         </div>
                         <div>
                             <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Endpoint</div>
-                            <div style="font-family:var(--mono);font-size:.74rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.endpoint || ''}">${p.endpoint || '<span style="color:var(--text3)">---</span>'}</div>
+                            <div style="font-family:var(--mono);font-size:.74rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(p.endpoint || '')}">${p.endpoint ? escapeHtml(p.endpoint) : '<span style="color:var(--text3)">---</span>'}</div>
                         </div>
                         <div>
                             <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Allowed IPs</div>
-                            <div style="font-family:var(--mono);font-size:.74rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.allowed_ips}">${p.allowed_ips}</div>
+                            <div style="font-family:var(--mono);font-size:.74rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(p.allowed_ips)}">${escapeHtml(p.allowed_ips)}</div>
                         </div>
                         <div>
                             <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Status</div>
@@ -239,21 +239,21 @@ async function loadWg() {
                         </div>
                         <div>
                             <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Public Key</div>
-                            <div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${p.public_key}" onclick="navigator.clipboard.writeText('${p.public_key}');toast('Key kopiert!')">${p.public_key.substring(0,20)}...</div>
+                            <div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${escapeHtml(p.public_key)}" onclick="navigator.clipboard.writeText('${escapeJsArg(p.public_key)}');toast('Key kopiert!')">${escapeHtml(p.public_key.substring(0,20))}...</div>
                         </div>
                         <div style="display:flex;gap:4px;justify-content:flex-end">
-                            <button class="btn btn-sm" onclick="wgEditPeerOpen('${iface.name}','${p.public_key}')" title="Peer bearbeiten" style="padding:2px 6px">
+                            <button class="btn btn-sm" onclick="wgEditPeerOpen('${escapeJsArg(iface.name)}','${escapeJsArg(p.public_key)}')" title="Peer bearbeiten" style="padding:2px 6px">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
-                            <button class="btn btn-sm" onclick="wgDownloadConf('${iface.name}','${p.public_key}')" title=".conf" style="padding:2px 6px;font-size:.55rem">
+                            <button class="btn btn-sm" onclick="wgDownloadConf('${escapeJsArg(iface.name)}','${escapeJsArg(p.public_key)}')" title=".conf" style="padding:2px 6px;font-size:.55rem">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 .conf
                             </button>
-                            <button class="btn btn-sm" onclick="wgDownloadPeerScript('${iface.name}','${p.public_key}')" title=".sh" style="padding:2px 6px;font-size:.55rem">
+                            <button class="btn btn-sm" onclick="wgDownloadPeerScript('${escapeJsArg(iface.name)}','${escapeJsArg(p.public_key)}')" title=".sh" style="padding:2px 6px;font-size:.55rem">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 .sh
                             </button>
-                            <button class="btn btn-sm btn-red" onclick="wgRemovePeer('${iface.name}','${p.public_key}')" title="${T.remove_peer}" style="padding:2px 6px">
+                            <button class="btn btn-sm btn-red" onclick="wgRemovePeer('${escapeJsArg(iface.name)}','${escapeJsArg(p.public_key)}')" title="${T.remove_peer}" style="padding:2px 6px">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
                             </button>
                         </div>
@@ -274,52 +274,52 @@ async function loadWg() {
                         <div class="jail-name">
                             ${statusTag}
                             ${bootTag}
-                            <span style="font-family:var(--mono);font-size:.95rem">${iface.name}</span>
+                            <span style="font-family:var(--mono);font-size:.95rem">${escapeHtml(iface.name)}</span>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <button class="btn btn-sm btn-green" onclick="wgAddPeerOpen('${iface.name}')" title="${T.add_peer}">
+                            <button class="btn btn-sm btn-green" onclick="wgAddPeerOpen('${escapeJsArg(iface.name)}')" title="${T.add_peer}">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
                                 + Peer
                             </button>
-                            <button class="btn btn-sm" onclick="showWgConfig('${iface.name}')" title="${T.show_config}">
+                            <button class="btn btn-sm" onclick="showWgConfig('${escapeJsArg(iface.name)}')" title="${T.show_config}">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 Config
                             </button>
-                            <button class="btn btn-sm" onclick="wgShowLogs('${iface.name}')" title="Logs">
+                            <button class="btn btn-sm" onclick="wgShowLogs('${escapeJsArg(iface.name)}')" title="Logs">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                                 Logs
                             </button>
                             ${iface.active ? `
-                                <button class="btn btn-sm btn-red" onclick="wgControl('${iface.name}','stop')">
+                                <button class="btn btn-sm btn-red" onclick="wgControl('${escapeJsArg(iface.name)}','stop')">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
                                     Stop
                                 </button>
-                                <button class="btn btn-sm" onclick="wgControl('${iface.name}','restart')">
+                                <button class="btn btn-sm" onclick="wgControl('${escapeJsArg(iface.name)}','restart')">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                                     Restart
                                 </button>
                             ` : `
-                                <button class="btn btn-sm btn-green" onclick="wgControl('${iface.name}','start')">
+                                <button class="btn btn-sm btn-green" onclick="wgControl('${escapeJsArg(iface.name)}','start')">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                                     Start
                                 </button>
                             `}
-                            <button class="btn btn-sm ${iface.enabled ? 'btn-green' : ''}" onclick="wgSetAutostart('${iface.name}', ${iface.enabled ? 'false' : 'true'})">
+                            <button class="btn btn-sm ${iface.enabled ? 'btn-green' : ''}" onclick="wgSetAutostart('${escapeJsArg(iface.name)}', ${iface.enabled ? 'false' : 'true'})">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V8l5-5h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                                 ${iface.enabled ? 'Autostart aktiv' : 'Autostart an'}
                             </button>
-                            <button class="btn btn-sm btn-red" onclick="wgDelete('${iface.name}')">
+                            <button class="btn btn-sm btn-red" onclick="wgDelete('${escapeJsArg(iface.name)}')">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                 ${T.delete_tunnel}
                             </button>
                         </div>
                     </div>
                     <div style="display:flex;gap:20px;padding:8px 20px;background:rgba(0,0,0,.15);border-bottom:1px solid var(--border-subtle);font-size:.7rem;flex-wrap:wrap">
-                        <div><span style="color:var(--text3)">VPN-Netz:</span> <span style="font-family:var(--mono);color:var(--accent)">${subnet || '---'}</span></div>
-                        <div><span style="color:var(--text3)">Gateway:</span> <span style="font-family:var(--mono)">${gateway || '---'}</span></div>
-                        <div><span style="color:var(--text3)">Port:</span> <span style="font-family:var(--mono)">${iface.listen_port || 'random'}</span></div>
-                        <div><span style="color:var(--text3)">Autostart:</span> <span style="font-family:var(--mono)">${iface.boot_status || 'unknown'}</span></div>
-                        <div><span style="color:var(--text3)">Public Key:</span> <span style="font-family:var(--mono);font-size:.62rem;cursor:pointer;color:var(--text3)" title="${iface.public_key || ''}" onclick="navigator.clipboard.writeText('${iface.public_key || ''}');toast('Key kopiert!')">${pubShort}</span></div>
+                        <div><span style="color:var(--text3)">VPN-Netz:</span> <span style="font-family:var(--mono);color:var(--accent)">${subnet ? escapeHtml(subnet) : '---'}</span></div>
+                        <div><span style="color:var(--text3)">Gateway:</span> <span style="font-family:var(--mono)">${gateway ? escapeHtml(gateway) : '---'}</span></div>
+                        <div><span style="color:var(--text3)">Port:</span> <span style="font-family:var(--mono)">${iface.listen_port ? escapeHtml(String(iface.listen_port)) : 'random'}</span></div>
+                        <div><span style="color:var(--text3)">Autostart:</span> <span style="font-family:var(--mono)">${iface.boot_status ? escapeHtml(iface.boot_status) : 'unknown'}</span></div>
+                        <div><span style="color:var(--text3)">Public Key:</span> <span style="font-family:var(--mono);font-size:.62rem;cursor:pointer;color:var(--text3)" title="${escapeHtml(iface.public_key || '')}" onclick="navigator.clipboard.writeText('${escapeJsArg(iface.public_key || '')}');toast('Key kopiert!')">${escapeHtml(pubShort)}</span></div>
                         <div><span style="color:var(--text3)">Peers:</span> <span style="font-family:var(--mono)">${iface.peers.length}</span></div>
                     </div>
                     <div class="jail-body">
@@ -358,7 +358,7 @@ function wgSuggestedReachabilityRoutes(ifaceName) {
 
 function wgOpenLxcRouteModal() {
     const ifaceOptions = (_wgStatusCache || []).map(iface =>
-        `<option value="${iface.name}">${iface.name}${iface.address ? ' - ' + iface.address : ''}</option>`
+        `<option value="${escapeHtml(iface.name)}">${escapeHtml(iface.name)}${iface.address ? ' - ' + escapeHtml(iface.address) : ''}</option>`
     ).join('');
     const firstIface = (_wgStatusCache[0] || {}).name || '';
     const presetRoutes = wgSuggestedReachabilityRoutes(firstIface).join(', ');
@@ -383,7 +383,7 @@ function wgOpenLxcRouteModal() {
         </div>
         <div class="form-group">
             <label class="form-label">Tunnel-Zielnetze</label>
-            <input class="form-input" id="wgLxcRoutes" value="${presetRoutes}" placeholder="10.10.20.0/24, 192.168.10.0/24">
+            <input class="form-input" id="wgLxcRoutes" value="${escapeHtml(presetRoutes)}" placeholder="10.10.20.0/24, 192.168.10.0/24">
             <div class="form-hint">Netze, für die CTs eine Rückroute über ihr internes Interface brauchen.</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
@@ -416,16 +416,16 @@ function wgRenderLxcRouteResults(containers, routes) {
             ? '<span class="tag tag-green">OK</span>'
             : (ct.fixable ? '<span class="tag tag-yellow">Fix möglich</span>' : '<span class="tag tag-red">Manuell prüfen</span>');
         const routeLines = (ct.recommended_lines || []).map(line =>
-            `<div style="font-family:var(--mono);font-size:.68rem;color:var(--text2)">${line}</div>`
+            `<div style="font-family:var(--mono);font-size:.68rem;color:var(--text2)">${escapeHtml(line)}</div>`
         ).join('');
         return `
             <div style="background:var(--surface);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;margin-bottom:10px">
                 <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px">
                     <div>
-                        <div style="font-weight:700">${ct.vmid} - ${ct.name || 'LXC'}</div>
+                        <div style="font-weight:700">${ct.vmid} - ${ct.name ? escapeHtml(ct.name) : 'LXC'}</div>
                         <div style="font-size:.68rem;color:var(--text3)">
-                            Default: <span style="font-family:var(--mono)">${ct.default_iface || '---'}</span>
-                            | Intern: <span style="font-family:var(--mono)">${target ? target.iface + ' via ' + target.gateway : '---'}</span>
+                            Default: <span style="font-family:var(--mono)">${ct.default_iface ? escapeHtml(ct.default_iface) : '---'}</span>
+                            | Intern: <span style="font-family:var(--mono)">${target ? escapeHtml(target.iface) + ' via ' + escapeHtml(target.gateway) : '---'}</span>
                             | Dual-homed: ${ct.dual_homed ? 'ja' : 'nein'}
                         </div>
                     </div>
@@ -437,7 +437,7 @@ function wgRenderLxcRouteResults(containers, routes) {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                     <div>
                         <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Fehlende Routen</div>
-                        <div style="font-family:var(--mono);font-size:.72rem;color:${missing.length ? 'var(--yellow)' : 'var(--green)'}">${missing.length ? missing.join(', ') : 'Keine'}</div>
+                        <div style="font-family:var(--mono);font-size:.72rem;color:${missing.length ? 'var(--yellow)' : 'var(--green)'}">${missing.length ? escapeHtml(missing.join(', ')) : 'Keine'}</div>
                     </div>
                     <div>
                         <div style="font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Persistenz</div>
@@ -513,28 +513,28 @@ async function showWgConfig(iface) {
 
         document.getElementById('wgEditIfaceTitle').textContent = iface + ' — Interface';
         document.getElementById('wgEditIfaceBody').innerHTML = `
-            <input type="hidden" id="wgeiIface" value="${iface}">
+            <input type="hidden" id="wgeiIface" value="${escapeHtml(iface)}">
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Address (Tunnel-IP)</label>
-                    <input class="form-input" id="wgeiAddr" value="${get('Address')}" placeholder="10.10.20.1/24">
+                    <input class="form-input" id="wgeiAddr" value="${escapeHtml(get('Address'))}" placeholder="10.10.20.1/24">
                 </div>
                 <div class="form-group">
                     <label class="form-label">ListenPort</label>
-                    <input class="form-input" id="wgeiPort" type="number" value="${get('ListenPort')}" placeholder="51820">
+                    <input class="form-input" id="wgeiPort" type="number" value="${escapeHtml(get('ListenPort'))}" placeholder="51820">
                 </div>
             </div>
             <div class="form-group">
                 <label class="form-label">PostUp</label>
-                <input class="form-input" id="wgeiPostUp" value="${get('PostUp')}" style="font-size:.7rem" placeholder="iptables Regeln etc.">
+                <input class="form-input" id="wgeiPostUp" value="${escapeHtml(get('PostUp'))}" style="font-size:.7rem" placeholder="iptables Regeln etc.">
             </div>
             <div class="form-group">
                 <label class="form-label">PostDown</label>
-                <input class="form-input" id="wgeiPostDown" value="${get('PostDown')}" style="font-size:.7rem" placeholder="iptables Cleanup etc.">
+                <input class="form-input" id="wgeiPostDown" value="${escapeHtml(get('PostDown'))}" style="font-size:.7rem" placeholder="iptables Cleanup etc.">
             </div>
             <div class="form-group">
                 <label class="form-label">Private Key</label>
-                <input class="form-input" id="wgeiPriv" value="${get('PrivateKey')}" style="font-size:.68rem" readonly>
+                <input class="form-input" id="wgeiPriv" value="${escapeHtml(get('PrivateKey'))}" style="font-size:.68rem" readonly>
                 <div class="form-hint">Kann nicht geändert werden (Public Key hängt davon ab)</div>
             </div>
         `;
@@ -678,26 +678,26 @@ function wgWizStep1() {
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Interface-Name</label>
-                <input class="form-input" id="wgWizIface" value="${_wgWizData.iface || 'wg1'}" placeholder="wg1">
+                <input class="form-input" id="wgWizIface" value="${escapeHtml(_wgWizData.iface || 'wg1')}" placeholder="wg1">
             </div>
             <div class="form-group">
                 <label class="form-label">Listen Port</label>
-                <input class="form-input" id="wgWizPort" type="number" value="${_wgWizData.port || ''}" placeholder="51820 (leer = random)">
+                <input class="form-input" id="wgWizPort" type="number" value="${escapeHtml(_wgWizData.port || '')}" placeholder="51820 (leer = random)">
                 <div class="form-hint">Leer lassen wenn dieser Server sich zum Peer verbindet</div>
             </div>
         </div>
         <div class="form-group">
             <label class="form-label">Tunnel-IP (dieses Servers)</label>
-            <input class="form-input" id="wgWizAddr" value="${_wgWizData.address || '10.10.30.1/24'}" placeholder="10.10.30.1/24">
+            <input class="form-input" id="wgWizAddr" value="${escapeHtml(_wgWizData.address || '10.10.30.1/24')}" placeholder="10.10.30.1/24">
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Private Key <span style="font-size:.55rem;color:var(--green)">(auto-generiert)</span></label>
-                <input class="form-input" id="wgWizPriv" value="${_wgWizData.privateKey}" style="font-size:.7rem">
+                <input class="form-input" id="wgWizPriv" value="${escapeHtml(_wgWizData.privateKey)}" style="font-size:.7rem">
             </div>
             <div class="form-group">
                 <label class="form-label">Public Key</label>
-                <input class="form-input" id="wgWizPub" value="${_wgWizData.publicKey}" readonly style="font-size:.7rem;opacity:.7">
+                <input class="form-input" id="wgWizPub" value="${escapeHtml(_wgWizData.publicKey)}" readonly style="font-size:.7rem;opacity:.7">
                 <div class="form-hint">Wird aus dem Private Key abgeleitet</div>
             </div>
         </div>
@@ -737,7 +737,7 @@ function wgWizStep1() {
                 <div style="font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Generierte Regeln</div>
                 <pre id="wgWizPostUpPre" style="font-family:var(--mono);font-size:.68rem;color:var(--text2);margin:0;white-space:pre-wrap;line-height:1.6"></pre>
             </div>
-            <input type="hidden" id="wgWizPostUp" value="${_wgWizData.postUp || ''}">
+            <input type="hidden" id="wgWizPostUp" value="${escapeHtml(_wgWizData.postUp || '')}">
         </div>
     `;
     document.getElementById('wgWizardFoot').innerHTML = `
@@ -757,7 +757,7 @@ function wgWizStep1() {
                 const label = i.name + (i.ip ? ' (' + i.ip + ')' : '');
                 const selected = (selId === 'wgWizNatIface' && (i.name === (_wgWizData._natIface || 'vmbr0') || i.name.startsWith('vmbr0') || i.name.startsWith('eth')))
                     || (selId === 'wgWizFwdIface' && (i.name === (_wgWizData._fwdIface || 'vmbr1') || i.name === 'vmbr1'));
-                sel.innerHTML += '<option value="' + i.name + '"' + (selected ? ' selected' : '') + '>' + label + '</option>';
+                sel.innerHTML += '<option value="' + escapeHtml(i.name) + '"' + (selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
             });
         });
         wgWizUpdatePostUp();
@@ -822,27 +822,27 @@ function wgWizStep2() {
     document.getElementById('wgWizardBody').innerHTML = `
         <div class="form-group">
             <label class="form-label">Peer Endpoint <span style="font-size:.55rem;color:var(--text3)">(IP:Port der Gegenstelle)</span></label>
-            <input class="form-input" id="wgWizPeerEp" value="${_wgWizData.peerEndpoint || ''}" placeholder="203.0.113.1:51820">
+            <input class="form-input" id="wgWizPeerEp" value="${escapeHtml(_wgWizData.peerEndpoint || '')}" placeholder="203.0.113.1:51820">
             <div class="form-hint">Leer lassen wenn der Peer sich hierher verbindet</div>
         </div>
         <div class="form-group">
             <label class="form-label">Peer Public Key</label>
-            <input class="form-input" id="wgWizPeerPub" value="${_wgWizData.peerPublicKey || ''}" placeholder="Public Key der Gegenstelle" style="font-size:.7rem">
+            <input class="form-input" id="wgWizPeerPub" value="${escapeHtml(_wgWizData.peerPublicKey || '')}" placeholder="Public Key der Gegenstelle" style="font-size:.7rem">
             <div class="form-hint">Muss vom Admin der Gegenstelle mitgeteilt werden</div>
         </div>
         <div class="form-group">
             <label class="form-label">Allowed IPs</label>
-            <input class="form-input" id="wgWizPeerIps" value="${_wgWizData.peerAllowedIps || '10.10.30.0/24'}" placeholder="10.10.30.0/24, 192.168.1.0/24">
+            <input class="form-input" id="wgWizPeerIps" value="${escapeHtml(_wgWizData.peerAllowedIps || '10.10.30.0/24')}" placeholder="10.10.30.0/24, 192.168.1.0/24">
             <div class="form-hint">Netzwerke die über den Tunnel erreichbar sein sollen</div>
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">PresharedKey <span style="font-size:.55rem;color:var(--green)">(auto)</span></label>
-                <input class="form-input" id="wgWizPsk" value="${_wgWizData.psk}" style="font-size:.7rem">
+                <input class="form-input" id="wgWizPsk" value="${escapeHtml(_wgWizData.psk)}" style="font-size:.7rem">
             </div>
             <div class="form-group">
                 <label class="form-label">Keepalive (Sekunden)</label>
-                <input class="form-input" id="wgWizKeepalive" type="number" value="${_wgWizData.keepalive || 25}" placeholder="25">
+                <input class="form-input" id="wgWizKeepalive" type="number" value="${escapeHtml(String(_wgWizData.keepalive || 25))}" placeholder="25">
             </div>
         </div>
         <label class="form-check" style="margin-top:8px">
@@ -912,9 +912,9 @@ function wgWizStep3() {
     document.getElementById('wgWizardBody').innerHTML = `
         <div style="margin-bottom:12px">
             <div style="font-size:.72rem;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px">
-                <span style="color:var(--green)">&#9679;</span> Lokale Config: /etc/wireguard/${_wgWizData.iface}.conf
+                <span style="color:var(--green)">&#9679;</span> Lokale Config: /etc/wireguard/${escapeHtml(_wgWizData.iface)}.conf
             </div>
-            <pre style="background:rgba(0,0,0,.3);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.7rem;line-height:1.6;overflow-x:auto;margin:0;color:var(--text2)">${localConf}</pre>
+            <pre style="background:rgba(0,0,0,.3);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.7rem;line-height:1.6;overflow-x:auto;margin:0;color:var(--text2)">${escapeHtml(localConf)}</pre>
         </div>
         <div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -925,22 +925,22 @@ function wgWizStep3() {
                     <button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('wgRemoteConf').textContent);toast('Kopiert!')">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
-                    <button class="btn btn-sm btn-green" onclick="wgDownloadFile('${_wgWizData.iface}-remote.conf', document.getElementById('wgRemoteConf').textContent)">
+                    <button class="btn btn-sm btn-green" onclick="wgDownloadFile('${escapeJsArg(_wgWizData.iface)}-remote.conf', document.getElementById('wgRemoteConf').textContent)">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         .conf
                     </button>
-                    <button class="btn btn-sm btn-green" onclick="wgDownloadRemoteScript('${_wgWizData.iface}')">
+                    <button class="btn btn-sm btn-green" onclick="wgDownloadRemoteScript('${escapeJsArg(_wgWizData.iface)}')">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         .sh
                     </button>
                 </div>
             </div>
-            <pre id="wgRemoteConf" style="background:rgba(64,196,255,.04);border:1px solid rgba(64,196,255,.12);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.7rem;line-height:1.6;overflow-x:auto;margin:0;color:var(--blue)">${remoteConf}</pre>
+            <pre id="wgRemoteConf" style="background:rgba(64,196,255,.04);border:1px solid rgba(64,196,255,.12);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.7rem;line-height:1.6;overflow-x:auto;margin:0;color:var(--blue)">${escapeHtml(remoteConf)}</pre>
         </div>
         ${_wgWizData.addFirewall && _wgWizData.port ? `
         <div style="margin-top:12px;padding:8px 12px;background:rgba(0,230,118,.04);border:1px solid rgba(0,230,118,.12);border-radius:6px;font-size:.68rem;color:var(--text2);display:flex;align-items:center;gap:8px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span>PVE-Firewall: <strong>UDP ${_wgWizData.port}</strong> wird automatisch freigegeben (ACCEPT-Regel)</span>
+            <span>PVE-Firewall: <strong>UDP ${escapeHtml(String(_wgWizData.port))}</strong> wird automatisch freigegeben (ACCEPT-Regel)</span>
         </div>` : ''}
     `;
     document.getElementById('wgWizardFoot').innerHTML = `
@@ -1243,33 +1243,33 @@ async function wgEditPeerOpen(iface, pubkey) {
 
         const body = document.getElementById('wgEditPeerBody');
         body.innerHTML = `
-            <input type="hidden" id="wgepIface" value="${iface}">
-            <input type="hidden" id="wgepOldPub" value="${pubkey}">
+            <input type="hidden" id="wgepIface" value="${escapeHtml(iface)}">
+            <input type="hidden" id="wgepOldPub" value="${escapeHtml(pubkey)}">
             <div class="form-group">
                 <label class="form-label">Peer-Name</label>
-                <input class="form-input" id="wgepName" value="${nameMatch ? nameMatch[1].trim() : ''}" placeholder="z.B. Laptop, Büro-Router">
+                <input class="form-input" id="wgepName" value="${escapeHtml(nameMatch ? nameMatch[1].trim() : '')}" placeholder="z.B. Laptop, Büro-Router">
             </div>
             <div class="form-group">
                 <label class="form-label">Public Key</label>
-                <input class="form-input" id="wgepPub" value="${pubkey}" style="font-size:.7rem" readonly>
+                <input class="form-input" id="wgepPub" value="${escapeHtml(pubkey)}" style="font-size:.7rem" readonly>
             </div>
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Endpoint</label>
-                    <input class="form-input" id="wgepEndpoint" value="${get('Endpoint')}" placeholder="IP:Port (leer = kein)">
+                    <input class="form-input" id="wgepEndpoint" value="${escapeHtml(get('Endpoint'))}" placeholder="IP:Port (leer = kein)">
                 </div>
                 <div class="form-group">
                     <label class="form-label">PersistentKeepalive</label>
-                    <input class="form-input" id="wgepKeepalive" type="number" value="${get('PersistentKeepalive') || '25'}">
+                    <input class="form-input" id="wgepKeepalive" type="number" value="${escapeHtml(get('PersistentKeepalive') || '25')}">
                 </div>
             </div>
             <div class="form-group">
                 <label class="form-label">AllowedIPs</label>
-                <input class="form-input" id="wgepAllowed" value="${get('AllowedIPs')}" placeholder="10.10.30.0/24">
+                <input class="form-input" id="wgepAllowed" value="${escapeHtml(get('AllowedIPs'))}" placeholder="10.10.30.0/24">
             </div>
             <div class="form-group">
                 <label class="form-label">PresharedKey</label>
-                <input class="form-input" id="wgepPsk" value="${get('PresharedKey')}" style="font-size:.68rem" placeholder="(optional)">
+                <input class="form-input" id="wgepPsk" value="${escapeHtml(get('PresharedKey'))}" style="font-size:.68rem" placeholder="(optional)">
             </div>
         `;
         document.getElementById('wgEditPeerTitle').textContent = (nameMatch ? nameMatch[1].trim() : 'Peer') + ' bearbeiten';
@@ -1433,38 +1433,38 @@ function wgAddPeerStep1() {
     document.getElementById('wgAddPeerTitle').textContent = T.step1of2;
     document.getElementById('wgAddPeerBody').innerHTML = `
         <div style="background:rgba(0,230,118,.04);border:1px solid rgba(0,230,118,.12);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:.68rem;color:var(--text2)">
-            <strong>${d.iface}</strong> &mdash; Server: ${d.serverAddress || '?'} | Port: ${d.serverPort || 'random'}
+            <strong>${escapeHtml(d.iface)}</strong> &mdash; Server: ${d.serverAddress ? escapeHtml(d.serverAddress) : '?'} | Port: ${d.serverPort ? escapeHtml(String(d.serverPort)) : 'random'}
         </div>
         <div class="form-group">
             <label class="form-label">${T.peer_name}</label>
-            <input class="form-input" id="wgPeerName" value="${d.peerName || ''}" placeholder="z.B. Laptop, Büro-Router, Handy">
+            <input class="form-input" id="wgPeerName" value="${escapeHtml(d.peerName || '')}" placeholder="z.B. Laptop, Büro-Router, Handy">
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">${T.peer_tunnel_ip}</label>
-                <input class="form-input" id="wgPeerIp" value="${d.peerIp || d.suggestedIp}" placeholder="10.10.30.2/24">
+                <input class="form-input" id="wgPeerIp" value="${escapeHtml(d.peerIp || d.suggestedIp)}" placeholder="10.10.30.2/24">
                 <div class="form-hint">Tunnel-IP die der Peer bekommt</div>
             </div>
             <div class="form-group">
                 <label class="form-label">${T.peer_dns}</label>
-                <input class="form-input" id="wgPeerDns" value="${d.peerDns || '1.1.1.1, 8.8.8.8'}" placeholder="1.1.1.1">
+                <input class="form-input" id="wgPeerDns" value="${escapeHtml(d.peerDns || '1.1.1.1, 8.8.8.8')}" placeholder="1.1.1.1">
                 <div class="form-hint">DNS-Server für den Peer (optional)</div>
             </div>
         </div>
         <div class="form-group">
             <label class="form-label">${T.peer_routes}</label>
-            <input class="form-input" id="wgPeerRoutes" value="${d.peerRoutes || _wgSubnetFromAddr(d.serverAddress)}" placeholder="10.10.30.0/24, 10.10.10.0/24">
+            <input class="form-input" id="wgPeerRoutes" value="${escapeHtml(d.peerRoutes || _wgSubnetFromAddr(d.serverAddress))}" placeholder="10.10.30.0/24, 10.10.10.0/24">
             <div class="form-hint">Netzwerke die der Peer über den Tunnel erreichen soll (AllowedIPs in der Peer-Config)</div>
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">${T.server_endpoint}</label>
-                <input class="form-input" id="wgPeerEndpoint" value="${d.peerEndpoint || (d.publicIp ? d.publicIp + ':' + (d.serverPort || 51820) : '')}" placeholder="203.0.113.1:51820">
+                <input class="form-input" id="wgPeerEndpoint" value="${escapeHtml(d.peerEndpoint || (d.publicIp ? d.publicIp + ':' + (d.serverPort || 51820) : ''))}" placeholder="203.0.113.1:51820">
                 <div class="form-hint">Öffentliche IP:Port dieses Servers</div>
             </div>
             <div class="form-group">
                 <label class="form-label">${T.keepalive}</label>
-                <input class="form-input" id="wgPeerKeepalive" type="number" value="${d.keepalive || 25}" placeholder="25">
+                <input class="form-input" id="wgPeerKeepalive" type="number" value="${escapeHtml(String(d.keepalive || 25))}" placeholder="25">
             </div>
         </div>
         <div style="border:1px solid var(--border-subtle);border-radius:6px;padding:10px 12px;margin-top:4px">
@@ -1472,11 +1472,11 @@ function wgAddPeerStep1() {
             <div class="form-row" style="gap:8px">
                 <div class="form-group" style="flex:1">
                     <label class="form-label" style="font-size:.62rem">${T.private_key}</label>
-                    <input class="form-input" id="wgPeerPrivKey" value="${d.peerPrivKey}" style="font-size:.65rem" readonly>
+                    <input class="form-input" id="wgPeerPrivKey" value="${escapeHtml(d.peerPrivKey)}" style="font-size:.65rem" readonly>
                 </div>
                 <div class="form-group" style="flex:1">
                     <label class="form-label" style="font-size:.62rem">${T.public_key}</label>
-                    <input class="form-input" id="wgPeerPubKey" value="${d.peerPubKey}" style="font-size:.65rem" readonly>
+                    <input class="form-input" id="wgPeerPubKey" value="${escapeHtml(d.peerPubKey)}" style="font-size:.65rem" readonly>
                 </div>
             </div>
         </div>
@@ -1582,19 +1582,19 @@ function wgAddPeerStep2() {
         <div style="margin-bottom:14px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
                 <div style="font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:6px">
-                    <span style="color:var(--green)">&#9679;</span> ${T.peer_config}: ${peerIfaceName}.conf
+                    <span style="color:var(--green)">&#9679;</span> ${T.peer_config}: ${escapeHtml(peerIfaceName)}.conf
                 </div>
                 <div style="display:flex;gap:4px">
                     <button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('wgPeerConfPre').textContent);toast('${T.copy_config}!')">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
-                    <button class="btn btn-sm btn-green" onclick="wgDownloadFile('${peerIfaceName}.conf', document.getElementById('wgPeerConfPre').textContent)">
+                    <button class="btn btn-sm btn-green" onclick="wgDownloadFile('${escapeJsArg(peerIfaceName)}.conf', document.getElementById('wgPeerConfPre').textContent)">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         .conf
                     </button>
                 </div>
             </div>
-            <pre id="wgPeerConfPre" style="background:rgba(0,0,0,.3);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.68rem;line-height:1.6;overflow-x:auto;margin:0;color:var(--text2);max-height:180px">${peerConf}</pre>
+            <pre id="wgPeerConfPre" style="background:rgba(0,0,0,.3);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.68rem;line-height:1.6;overflow-x:auto;margin:0;color:var(--text2);max-height:180px">${escapeHtml(peerConf)}</pre>
         </div>
         <div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -1611,7 +1611,7 @@ function wgAddPeerStep2() {
                     </button>
                 </div>
             </div>
-            <pre id="wgScriptPre" style="background:rgba(64,196,255,.04);border:1px solid rgba(64,196,255,.12);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.65rem;line-height:1.5;overflow-x:auto;margin:0;color:var(--blue);max-height:220px">${script}</pre>
+            <pre id="wgScriptPre" style="background:rgba(64,196,255,.04);border:1px solid rgba(64,196,255,.12);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.65rem;line-height:1.5;overflow-x:auto;margin:0;color:var(--blue);max-height:220px">${escapeHtml(script)}</pre>
             <div style="font-size:.62rem;color:var(--text3);margin-top:6px">${T.setup_script_hint}</div>
         </div>
     `;
